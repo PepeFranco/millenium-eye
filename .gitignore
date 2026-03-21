@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+
+# Downloaded card images (large, re-downloadable)
+data/images/
+
+# ORB descriptor index (large, regeneratable)
+data/orb_descriptors.npy
+data/orb_card_ids.npy
+
+# Old phash artefacts (replaced by ORB)
+data/hashes.db
+data/hash_index.pkl
+
+# Logs
+data/failed_downloads.txt
+
+# Debug artefacts
+data/debug_*.jpg
+test_card.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
