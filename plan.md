@@ -59,17 +59,52 @@ Follow `DEPLOY.md`. Remaining steps after database build finishes:
 
 ---
 
-### Next feature: wants list
+### Future work
 
-The original goal is to alert users when a card on their wants list appears in frame. This is not yet built.
+---
 
-**Proposed approach:**
+#### Token entry UI
 
-- Add a **wants list** UI to the sidebar — a text area or search box where users paste card names (one per line)
-- Store the list in `localStorage` so it persists between sessions
-- On each match, check if the matched `card_name` is in the wants list
-- If it is, highlight the match differently in the UI (e.g. gold border, notification sound, push notification)
-- The wants list is per-user (client-side only) — no server changes needed
+The current token gate is a plain password input. Build a proper first-time setup screen:
+
+- Shown on first visit or when the stored token is rejected
+- Clear explanation of what the token is and where to get it
+- "Remember this device" checkbox (controls whether token persists in localStorage)
+
+---
+
+#### Wants list UI
+
+Build a wants list manager accessible from the sidebar. Requirements:
+
+- **Card name field** — autocomplete against the YGOPRODECK card list (fetch `data/cards.json` or call the API). Selecting a name from autocomplete locks in the correct spelling.
+- **Preferred rarity** — free text field (e.g. "Ultra Rare", "Secret Rare"). Optional, informational only.
+- **Preferred set** — free text field (e.g. "LOB", "KEKM"). Optional, informational only.
+- **Remove button** per entry — removes the card from the wants list.
+- List stored in `localStorage` — no server changes needed, fully client-side.
+- On a match, check if `card_name` is in the wants list. If so: highlight with a gold border, play a short notification sound, and show rarity/set preferences in the match overlay so the user knows what to look for.
+
+---
+
+#### CI/CD pipeline
+
+Set up GitHub Actions to automate deployment on push to `main`:
+
+- Run any tests
+- SSH into the Hetzner server, pull latest, restart the systemd service
+- Notify on failure
+
+---
+
+#### Improve image recognition
+
+Current ORB + FLANN approach works but has known failure modes (glare, perspective distortion, similar artworks). Possible improvements to investigate:
+
+- Tune ORB parameters (`nfeatures`, `scaleFactor`, `nlevels`) for card imagery
+- Pre-process the card crop before matching: CLAHE contrast normalisation, sharpen
+- Increase `MIN_GOOD_MATCHES` threshold to reduce false positives
+- Fall back to phash as a second-pass check when ORB confidence is borderline
+- Investigate SuperPoint/SuperGlue or other learned feature matchers if ORB accuracy plateaus
 
 ---
 
