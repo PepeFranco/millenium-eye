@@ -1,0 +1,18 @@
+[Unit]
+Description=Millennium Eye — YGO Card Scanner
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/millenium-eye
+Environment="ACCESS_TOKEN=CHANGE_ME"
+ExecStart=/opt/millenium-eye/.venv/bin/gunicorn -c gunicorn.conf.py app:app
+Restart=always
+RestartSec=5
+
+# Let gunicorn load the ORB index before systemd marks the service as started
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

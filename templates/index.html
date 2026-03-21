@@ -167,9 +167,81 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: #111; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+    /* ── Token gate ───────────────────────────────────── */
+    #token-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #token-gate.hidden { display: none; }
+
+    #token-box {
+      background: #1a1207;
+      border: 1px solid #4a3510;
+      border-radius: 10px;
+      padding: 32px 28px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    #token-box h2 {
+      color: #c9a84c;
+      font-size: 1rem;
+      letter-spacing: 0.05em;
+    }
+    #token-box p {
+      font-size: 0.8rem;
+      color: #888;
+      line-height: 1.5;
+    }
+    #token-input {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e8d5a3;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      width: 100%;
+      outline: none;
+    }
+    #token-input:focus { border-color: #c9a84c; }
+    #token-submit {
+      background: #c9a84c;
+      border: none;
+      border-radius: 6px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 10px;
+      width: 100%;
+    }
+    #token-submit:hover { background: #e0bc5a; }
+    #token-error {
+      color: #ff4136;
+      font-size: 0.78rem;
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <!-- Token gate — hidden once authenticated -->
+  <div id="token-gate">
+    <div id="token-box">
+      <h2>Millennium Eye</h2>
+      <p>Enter the access token shared by your local YGO community.</p>
+      <input id="token-input" type="password" placeholder="Access token" autocomplete="off" />
+      <span id="token-error">Invalid token — try again.</span>
+      <button id="token-submit">Enter</button>
+    </div>
+  </div>
+
   <header>
     <div id="status-dot"></div>
     <h1>Millennium Eye</h1>
@@ -204,6 +276,56 @@
     const fpsDisplay     = document.getElementById('fps-display');
     const ctx            = overlay.getContext('2d');
     const capCtx         = captureCanvas.getContext('2d');
+
+    // ── Token auth ───────────────────────────────────────────────────────────
+    const TOKEN_KEY   = 'me_access_token';
+    const tokenGate   = document.getElementById('token-gate');
+    const tokenInput  = document.getElementById('token-input');
+    const tokenSubmit = document.getElementById('token-submit');
+    const tokenError  = document.getElementById('token-error');
+
+    let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+
+    async function verifyToken(token) {
+      // Send a minimal request to check the token is valid
+      const res = await fetch('/api/recognize', {
+        method: 'POST',
+        headers: { 'X-Access-Token': token, 'Content-Type': 'image/jpeg' },
+        body: new Uint8Array(0),
+      });
+      return res.status !== 401;
+    }
+
+    async function initAuth() {
+      if (accessToken) {
+        const ok = await verifyToken(accessToken);
+        if (ok) { tokenGate.classList.add('hidden'); startCamera(); return; }
+        // stored token is no longer valid
+        localStorage.removeItem(TOKEN_KEY);
+        accessToken = '';
+      }
+      tokenGate.classList.remove('hidden');
+    }
+
+    tokenSubmit.addEventListener('click', async () => {
+      const t = tokenInput.value.trim();
+      if (!t) return;
+      tokenSubmit.disabled = true;
+      const ok = await verifyToken(t);
+      tokenSubmit.disabled = false;
+      if (ok) {
+        accessToken = t;
+        localStorage.setItem(TOKEN_KEY, t);
+        tokenError.style.display = 'none';
+        tokenGate.classList.add('hidden');
+        startCamera();
+      } else {
+        tokenError.style.display = 'block';
+        tokenInput.select();
+      }
+    });
+
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tokenSubmit.click(); });
 
     // ── recent matches dedup (30 s window) ──────────────────────────────────
     const DEDUP_MS = 30_000;
@@ -321,10 +443,18 @@
         try {
           const res = await fetch('/api/recognize', {
             method: 'POST',
-            headers: { 'Content-Type': 'image/jpeg' },
+            headers: { 'Content-Type': 'image/jpeg', 'X-Access-Token': accessToken },
             body: blob,
           });
 
+          if (res.status === 401) {
+            localStorage.removeItem(TOKEN_KEY);
+            accessToken = '';
+            tokenGate.classList.remove('hidden');
+            statusDot.className = 'error';
+            statusText.textContent = 'Session expired — re-enter token';
+            return;
+          }
           if (!res.ok) return;
 
           const data = await res.json();
@@ -382,7 +512,7 @@
       }
     }
 
-    startCamera();
+    initAuth();
   </script>
 </body>
 </html>
