@@ -16,7 +16,7 @@ ORB_DES_PATH   = "data/orb_descriptors.npy"
 ORB_IDS_PATH   = "data/orb_card_ids.npy"
 ORB_NAM_PATH   = "data/orb_card_names.json"
 
-ORB_FEATURES   = 500   # must match build_database.py
+ORB_FEATURES   = 200   # must match build_database.py
 RATIO_THRESH   = 0.75  # Lowe ratio test
 MIN_GOOD_MATCHES = 6   # minimum votes to accept a match
 

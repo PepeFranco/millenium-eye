@@ -32,7 +32,7 @@ ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
 ORB_IDS_PATH = os.path.join(DATA_DIR, "orb_card_ids.npy")
 ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 
-ORB_FEATURES   = 500  # keypoints per card image
+ORB_FEATURES   = 200  # keypoints per card image
 SLEEP_MIN      = 0.3  # seconds between requests (min)
 SLEEP_MAX      = 0.6  # seconds between requests (max) — jitter avoids pattern detection
 BATCH_PAUSE_S  = 5.0  # longer pause every N requests
