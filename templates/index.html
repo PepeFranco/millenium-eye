@@ -443,7 +443,8 @@
     let videoRotated = false;
 
     function checkVideoRotation() {
-      const containerPortrait = video.offsetHeight > video.offsetWidth;
+      const wrap              = video.parentElement;
+      const containerPortrait = wrap.offsetHeight > wrap.offsetWidth;
       const videoLandscape    = video.videoWidth   > video.videoHeight;
       videoRotated = containerPortrait && videoLandscape;
 
