@@ -437,6 +437,39 @@
       }
     }
 
+    // ── video rotation detection ─────────────────────────────────────────────
+    // Some mobile browsers stream landscape video even when the phone is held
+    // in portrait. Detect this and rotate both the display and the capture.
+    let videoRotated = false;
+
+    function checkVideoRotation() {
+      const containerPortrait = video.offsetHeight > video.offsetWidth;
+      const videoLandscape    = video.videoWidth   > video.videoHeight;
+      videoRotated = containerPortrait && videoLandscape;
+
+      if (videoRotated) {
+        const scale = Math.min(
+          video.offsetWidth  / video.videoHeight,
+          video.offsetHeight / video.videoWidth
+        );
+        video.style.transform = `rotate(90deg) scale(${scale})`;
+        video.style.width     = `${video.videoWidth}px`;
+        video.style.height    = `${video.videoHeight}px`;
+        video.style.maxWidth  = 'none';
+        video.style.maxHeight = 'none';
+        video.style.position  = 'absolute';
+      } else {
+        video.style.transform = '';
+        video.style.width     = '';
+        video.style.height    = '';
+        video.style.maxWidth  = '';
+        video.style.maxHeight = '';
+        video.style.position  = '';
+      }
+    }
+
+    window.addEventListener('resize', checkVideoRotation);
+
     // ── main loop ────────────────────────────────────────────────────────────
     const CAPTURE_W = 1280;
     let frameTimestamps = [];
@@ -448,14 +481,23 @@
       const vh = video.videoHeight;
       if (!vw || !vh) return;
 
-      // Scale capture to CAPTURE_W while preserving aspect ratio
-      const scale  = CAPTURE_W / vw;
-      const capW   = CAPTURE_W;
-      const capH   = Math.round(vh * scale);
-
-      captureCanvas.width  = capW;
-      captureCanvas.height = capH;
-      capCtx.drawImage(video, 0, 0, capW, capH);
+      if (videoRotated) {
+        // Rotate the captured frame 90° so the server gets the correct orientation
+        const capH = CAPTURE_W;
+        const capW = Math.round(CAPTURE_W * vh / vw);
+        captureCanvas.width  = capW;
+        captureCanvas.height = capH;
+        capCtx.save();
+        capCtx.translate(capW / 2, capH / 2);
+        capCtx.rotate(Math.PI / 2);
+        capCtx.drawImage(video, -capH / 2, -capW / 2, capH, capW);
+        capCtx.restore();
+      } else {
+        const scale = CAPTURE_W / vw;
+        captureCanvas.width  = CAPTURE_W;
+        captureCanvas.height = Math.round(vh * scale);
+        capCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+      }
 
       captureCanvas.toBlob(async (blob) => {
         if (!blob) return;
@@ -523,6 +565,7 @@
         });
         video.srcObject = stream;
         await video.play();
+        checkVideoRotation();
         statusDot.className = 'scanning';
         statusText.textContent = 'Scanning…';
         requestAnimationFrame(captureAndSend);
