@@ -16,13 +16,15 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from card_detector import detect_cards
-from recogniser import load_index, recognise_card
+from recogniser import load_index, recognise_card, get_valid_card_names
+from wishlist import init_db, get_all as wl_get_all, add_entry as wl_add, remove_entry as wl_remove
 
 app = Flask(__name__)
 
 # Load the ORB index at import time so Gunicorn's preload_app shares it
 # across workers. Also works when running with `python3 app.py` directly.
 load_index()
+init_db()
 
 # ---------------------------------------------------------------------------
 # Rate limiting
@@ -80,6 +82,44 @@ def recognize():
         })
 
     return jsonify({"detections": results})
+
+
+@app.route("/api/cards")
+def card_names():
+    check_token()
+    return jsonify(get_valid_card_names())
+
+
+@app.route("/api/wishlist", methods=["GET"])
+def wishlist_get():
+    check_token()
+    return jsonify(wl_get_all())
+
+
+@app.route("/api/wishlist", methods=["POST"])
+def wishlist_post():
+    check_token()
+    body   = request.get_json(silent=True) or {}
+    player = (body.get("player_name") or "").strip()
+    card   = (body.get("card_name") or "").strip()
+    if not player or not card:
+        return jsonify({"error": "player_name and card_name required"}), 400
+    valid = set(get_valid_card_names())
+    if valid and card not in valid:
+        return jsonify({"error": "unknown card name"}), 400
+    entry_id = wl_add(
+        player, card,
+        (body.get("preferred_rarity") or "").strip() or None,
+        (body.get("preferred_set") or "").strip() or None,
+    )
+    return jsonify({"id": entry_id}), 201
+
+
+@app.route("/api/wishlist/<int:entry_id>", methods=["DELETE"])
+def wishlist_delete(entry_id):
+    check_token()
+    wl_remove(entry_id)
+    return "", 204
 
 
 # ---------------------------------------------------------------------------

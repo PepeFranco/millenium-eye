@@ -63,6 +63,12 @@ def _ensure_loaded():
         load_index()
 
 
+def get_valid_card_names() -> list[str]:
+    """Return a sorted, deduplicated list of all card names in the index."""
+    _ensure_loaded()
+    return sorted(set(_id_to_name.values()))
+
+
 # ---------------------------------------------------------------------------
 # Recognition
 # ---------------------------------------------------------------------------
