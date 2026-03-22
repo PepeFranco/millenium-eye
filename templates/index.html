@@ -109,40 +109,35 @@
       }
     }
 
-    /* ── Sidebar tabs ────────────────────────────────── */
-    #sidebar-tabs {
+    /* ── Sidebar header ─────────────────────────────── */
+    #sidebar-header {
       display: flex;
-      flex-shrink: 0;
+      align-items: center;
+      padding: 10px 16px;
       border-bottom: 1px solid #2a1e06;
+      flex-shrink: 0;
+      gap: 8px;
     }
 
-    .tab-btn {
-      flex: 1;
-      padding: 10px 4px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: #666;
-      cursor: pointer;
-      font-size: 0.75rem;
-      font-family: inherit;
+    #sidebar-header h2 {
+      font-size: 0.85rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      transition: color 0.15s;
-    }
-    .tab-btn:hover { color: #aaa; }
-    .tab-btn.active { color: #c9a84c; border-bottom-color: #c9a84c; }
-
-    .panel {
-      display: none;
+      letter-spacing: 0.1em;
+      color: #c9a84c;
       flex: 1;
-      flex-direction: column;
-      overflow: hidden;
-      min-height: 0;
     }
-    .panel.active { display: flex; }
 
-    /* ── Detected panel ─────────────────────────────── */
+    #wishlist-link {
+      font-size: 0.72rem;
+      color: #666;
+      text-decoration: none;
+      padding: 3px 8px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    #wishlist-link:hover { color: #c9a84c; border-color: #c9a84c; }
+
     #match-list {
       flex: 1;
       overflow-y: auto;
@@ -212,112 +207,6 @@
       border-top: 1px solid #1a1a1a;
       flex-shrink: 0;
     }
-
-    /* ── Wishlist panel ─────────────────────────────── */
-    #wl-form {
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      border-bottom: 1px solid #2a1e06;
-      flex-shrink: 0;
-    }
-
-    .wl-input {
-      background: #0d0d0d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      color: #e8d5a3;
-      font-size: 0.82rem;
-      font-family: inherit;
-      padding: 7px 9px;
-      width: 100%;
-      outline: none;
-    }
-    .wl-input:focus { border-color: #c9a84c; }
-
-    .wl-row {
-      display: flex;
-      gap: 6px;
-    }
-    .wl-row .wl-input { flex: 1; width: auto; }
-
-    #wl-add-btn {
-      background: #c9a84c;
-      border: none;
-      border-radius: 4px;
-      color: #0d0d0d;
-      cursor: pointer;
-      font-size: 0.82rem;
-      font-family: inherit;
-      font-weight: 700;
-      padding: 8px;
-      width: 100%;
-    }
-    #wl-add-btn:hover { background: #e0bc5a; }
-
-    #wl-form-error {
-      color: #ff4136;
-      font-size: 0.72rem;
-      min-height: 1em;
-    }
-
-    #wl-list {
-      flex: 1;
-      overflow-y: auto;
-    }
-
-    #wl-empty {
-      color: #444;
-      font-size: 0.8rem;
-      text-align: center;
-      margin-top: 40px;
-      padding: 0 16px;
-    }
-
-    .wl-entry {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 9px 10px;
-      border-bottom: 1px solid #1a1a1a;
-    }
-
-    .wl-entry-info { flex: 1; min-width: 0; }
-
-    .wl-player {
-      font-size: 0.68rem;
-      color: #c9a84c;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 2px;
-    }
-
-    .wl-card-name {
-      font-size: 0.85rem;
-      color: #e8d5a3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .wl-hints {
-      font-size: 0.7rem;
-      color: #666;
-      margin-top: 2px;
-    }
-
-    .wl-remove {
-      background: none;
-      border: none;
-      color: #555;
-      cursor: pointer;
-      font-size: 1.1rem;
-      line-height: 1;
-      padding: 0 2px;
-      flex-shrink: 0;
-    }
-    .wl-remove:hover { color: #ff4136; }
 
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-4px); }
@@ -415,33 +304,13 @@
     </div>
 
     <aside id="sidebar">
-      <div id="sidebar-tabs">
-        <button class="tab-btn active" data-tab="detected">Detected</button>
-        <button class="tab-btn" data-tab="wishlist">Wishlist</button>
+      <div id="sidebar-header">
+        <h2>Detected cards</h2>
+        <a id="wishlist-link" href="/wishlist">Wishlist</a>
       </div>
-
-      <div id="panel-detected" class="panel active">
-        <div id="match-list">
-          <p id="no-matches">No cards detected yet</p>
-        </div>
+      <div id="match-list">
+        <p id="no-matches">No cards detected yet</p>
       </div>
-
-      <div id="panel-wishlist" class="panel">
-        <div id="wl-form">
-          <input id="wl-player" class="wl-input" type="text" placeholder="Your name" autocomplete="off" />
-          <input id="wl-card" class="wl-input" type="text" list="card-datalist" placeholder="Card name" autocomplete="off" />
-          <datalist id="card-datalist"></datalist>
-          <div class="wl-row">
-            <input id="wl-rarity" class="wl-input" type="text" placeholder="Rarity (optional)" autocomplete="off" />
-            <input id="wl-set" class="wl-input" type="text" placeholder="Set (optional)" autocomplete="off" />
-          </div>
-          <button id="wl-add-btn">Add to wishlist</button>
-          <span id="wl-form-error"></span>
-        </div>
-        <div id="wl-list"></div>
-        <p id="wl-empty" style="display:none">Wishlist is empty</p>
-      </div>
-
       <div id="fps-display">— fps</div>
     </aside>
   </main>
@@ -486,7 +355,6 @@
           tokenGate.classList.add('hidden');
           startCamera();
           loadWishlist();
-          loadCardNames();
           return;
         }
         // stored token is no longer valid
@@ -509,7 +377,6 @@
         tokenGate.classList.add('hidden');
         startCamera();
         loadWishlist();
-        loadCardNames();
       } else {
         tokenError.style.display = 'block';
         tokenInput.select();
@@ -751,8 +618,7 @@
       }, 'image/jpeg', 0.95);
     }
 
-    // ── Wishlist ─────────────────────────────────────────────────────────────
-    const PLAYER_KEY = 'me_player_name';
+    // ── Wishlist (loaded for match highlighting only) ─────────────────────────
     let wishlist = [];
 
     function escapeHtml(str) {
@@ -768,117 +634,8 @@
         });
         if (!res.ok) return;
         wishlist = await res.json();
-        renderWishlist();
       } catch {}
     }
-
-    async function loadCardNames() {
-      try {
-        const res = await fetch('/api/cards', {
-          headers: { 'X-Access-Token': accessToken },
-        });
-        if (!res.ok) return;
-        const names = await res.json();
-        const dl = document.getElementById('card-datalist');
-        dl.innerHTML = '';
-        for (const name of names) {
-          const opt = document.createElement('option');
-          opt.value = name;
-          dl.appendChild(opt);
-        }
-      } catch {}
-    }
-
-    function renderWishlist() {
-      const list  = document.getElementById('wl-list');
-      const empty = document.getElementById('wl-empty');
-      list.innerHTML = '';
-      if (wishlist.length === 0) {
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-      for (const entry of wishlist) {
-        const hints = [entry.preferred_rarity, entry.preferred_set]
-          .filter(Boolean).join(' · ');
-        const el = document.createElement('div');
-        el.className = 'wl-entry';
-        el.innerHTML = `
-          <div class="wl-entry-info">
-            <div class="wl-player">${escapeHtml(entry.player_name)}</div>
-            <div class="wl-card-name" title="${escapeHtml(entry.card_name)}">${escapeHtml(entry.card_name)}</div>
-            ${hints ? `<div class="wl-hints">${escapeHtml(hints)}</div>` : ''}
-          </div>
-          <button class="wl-remove" data-id="${entry.id}" title="Remove">×</button>`;
-        list.appendChild(el);
-      }
-      list.querySelectorAll('.wl-remove').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          await fetch(`/api/wishlist/${btn.dataset.id}`, {
-            method: 'DELETE',
-            headers: { 'X-Access-Token': accessToken },
-          });
-          await loadWishlist();
-        });
-      });
-    }
-
-    // Tab switching
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
-        if (btn.dataset.tab === 'wishlist') loadWishlist();
-      });
-    });
-
-    // Add form
-    const wlPlayer = document.getElementById('wl-player');
-    const wlCard   = document.getElementById('wl-card');
-    const wlRarity = document.getElementById('wl-rarity');
-    const wlSet    = document.getElementById('wl-set');
-    const wlError  = document.getElementById('wl-form-error');
-
-    wlPlayer.value = localStorage.getItem(PLAYER_KEY) || '';
-
-    document.getElementById('wl-add-btn').addEventListener('click', async () => {
-      const player = wlPlayer.value.trim();
-      const card   = wlCard.value.trim();
-      if (!player || !card) {
-        wlError.textContent = 'Name and card are required.';
-        return;
-      }
-      wlError.textContent = '';
-      const res = await fetch('/api/wishlist', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Access-Token': accessToken,
-        },
-        body: JSON.stringify({
-          player_name:      player,
-          card_name:        card,
-          preferred_rarity: wlRarity.value.trim() || null,
-          preferred_set:    wlSet.value.trim()    || null,
-        }),
-      });
-      if (res.status === 400) {
-        const err = await res.json();
-        wlError.textContent = err.error || 'Invalid entry.';
-        return;
-      }
-      if (!res.ok) {
-        wlError.textContent = 'Server error.';
-        return;
-      }
-      localStorage.setItem(PLAYER_KEY, player);
-      wlCard.value   = '';
-      wlRarity.value = '';
-      wlSet.value    = '';
-      await loadWishlist();
-    });
 
     // ── camera init ──────────────────────────────────────────────────────────
     async function startCamera() {

@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Millennium Eye — Wishlist</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e8d5a3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 10px 20px;
+      background: #1a1207;
+      border-bottom: 1px solid #4a3510;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 {
+      font-size: 1.2rem;
+      letter-spacing: 0.05em;
+      color: #c9a84c;
+    }
+
+    #back-link {
+      margin-left: auto;
+      color: #888;
+      font-size: 0.8rem;
+      text-decoration: none;
+      padding: 5px 10px;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    #back-link:hover { color: #c9a84c; border-color: #c9a84c; }
+
+    main {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Add form ──────────────────────────────────────── */
+    #wl-form {
+      background: #111;
+      border: 1px solid #2a1e06;
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #wl-form h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #c9a84c;
+    }
+
+    .wl-label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .wl-input {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #e8d5a3;
+      font-size: 0.9rem;
+      font-family: inherit;
+      padding: 9px 11px;
+      width: 100%;
+      outline: none;
+    }
+    .wl-input:focus { border-color: #c9a84c; }
+
+    .wl-row {
+      display: flex;
+      gap: 10px;
+    }
+    .wl-row .wl-label { flex: 1; }
+
+    #wl-add-btn {
+      background: #c9a84c;
+      border: none;
+      border-radius: 4px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 700;
+      padding: 10px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    #wl-add-btn:hover { background: #e0bc5a; }
+
+    #wl-form-error {
+      color: #ff4136;
+      font-size: 0.78rem;
+      min-height: 1em;
+    }
+
+    /* ── List ──────────────────────────────────────────── */
+    #wl-section h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #c9a84c;
+      margin-bottom: 10px;
+    }
+
+    #wl-empty {
+      color: #444;
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 32px 0;
+    }
+
+    #wl-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .wl-entry {
+      background: #111;
+      border: 1px solid #2a1e06;
+      border-radius: 6px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .wl-entry-info { flex: 1; min-width: 0; }
+
+    .wl-player {
+      font-size: 0.7rem;
+      color: #c9a84c;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+    }
+
+    .wl-card-name {
+      font-size: 0.95rem;
+      color: #e8d5a3;
+      font-weight: 600;
+    }
+
+    .wl-hints {
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 3px;
+    }
+
+    .wl-remove {
+      background: none;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #555;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-family: inherit;
+      padding: 4px 8px;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .wl-remove:hover { border-color: #ff4136; color: #ff4136; }
+
+    /* ── Token gate ───────────────────────────────────── */
+    #token-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #token-gate.hidden { display: none; }
+
+    #token-box {
+      background: #1a1207;
+      border: 1px solid #4a3510;
+      border-radius: 10px;
+      padding: 32px 28px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    #token-box h2 { color: #c9a84c; font-size: 1rem; letter-spacing: 0.05em; }
+    #token-box p  { font-size: 0.8rem; color: #888; line-height: 1.5; }
+
+    #token-input {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e8d5a3;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      width: 100%;
+      outline: none;
+    }
+    #token-input:focus { border-color: #c9a84c; }
+
+    #token-submit {
+      background: #c9a84c;
+      border: none;
+      border-radius: 6px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 10px;
+      width: 100%;
+    }
+    #token-submit:hover { background: #e0bc5a; }
+    #token-error { color: #ff4136; font-size: 0.78rem; display: none; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div id="token-gate">
+    <div id="token-box">
+      <h2>Millennium Eye</h2>
+      <p>Enter the access token shared by your local YGO community.</p>
+      <input id="token-input" type="password" placeholder="Access token" autocomplete="off" />
+      <span id="token-error">Invalid token — try again.</span>
+      <button id="token-submit">Enter</button>
+    </div>
+  </div>
+
+  <header>
+    <h1>Wishlist</h1>
+    <a id="back-link" href="/">← Scanner</a>
+  </header>
+
+  <main>
+    <div id="wl-form">
+      <h2>Add card</h2>
+      <label class="wl-label">
+        Your name
+        <input id="wl-player" class="wl-input" type="text" placeholder="e.g. Pepe" autocomplete="off" />
+      </label>
+      <label class="wl-label">
+        Card name
+        <input id="wl-card" class="wl-input" type="text" list="card-datalist" placeholder="Start typing…" autocomplete="off" />
+        <datalist id="card-datalist"></datalist>
+      </label>
+      <div class="wl-row">
+        <label class="wl-label">
+          Preferred rarity
+          <input id="wl-rarity" class="wl-input" type="text" placeholder="e.g. Ultra Rare" autocomplete="off" />
+        </label>
+        <label class="wl-label">
+          Preferred set
+          <input id="wl-set" class="wl-input" type="text" placeholder="e.g. LOB" autocomplete="off" />
+        </label>
+      </div>
+      <button id="wl-add-btn">Add to wishlist</button>
+      <span id="wl-form-error"></span>
+    </div>
+
+    <div id="wl-section">
+      <h2>Your wishlist</h2>
+      <p id="wl-empty">Wishlist is empty</p>
+      <div id="wl-list"></div>
+    </div>
+  </main>
+
+  <script>
+    const TOKEN_KEY  = 'me_access_token';
+    const PLAYER_KEY = 'me_player_name';
+
+    const tokenGate   = document.getElementById('token-gate');
+    const tokenInput  = document.getElementById('token-input');
+    const tokenSubmit = document.getElementById('token-submit');
+    const tokenError  = document.getElementById('token-error');
+    const wlPlayer    = document.getElementById('wl-player');
+    const wlCard      = document.getElementById('wl-card');
+    const wlRarity    = document.getElementById('wl-rarity');
+    const wlSet       = document.getElementById('wl-set');
+    const wlFormError = document.getElementById('wl-form-error');
+
+    let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+
+    // ── Auth ─────────────────────────────────────────────────────────────────
+    async function verifyToken(token) {
+      const res = await fetch('/api/recognize', {
+        method: 'POST',
+        headers: { 'X-Access-Token': token, 'Content-Type': 'image/jpeg' },
+        body: new Uint8Array(0),
+      });
+      return res.status !== 401;
+    }
+
+    async function initAuth() {
+      if (accessToken) {
+        const ok = await verifyToken(accessToken);
+        if (ok) { tokenGate.classList.add('hidden'); onAuthenticated(); return; }
+        localStorage.removeItem(TOKEN_KEY);
+        accessToken = '';
+      }
+      tokenGate.classList.remove('hidden');
+    }
+
+    tokenSubmit.addEventListener('click', async () => {
+      const t = tokenInput.value.trim();
+      if (!t) return;
+      tokenSubmit.disabled = true;
+      const ok = await verifyToken(t);
+      tokenSubmit.disabled = false;
+      if (ok) {
+        accessToken = t;
+        localStorage.setItem(TOKEN_KEY, t);
+        tokenError.style.display = 'none';
+        tokenGate.classList.add('hidden');
+        onAuthenticated();
+      } else {
+        tokenError.style.display = 'block';
+        tokenInput.select();
+      }
+    });
+
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tokenSubmit.click(); });
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function authHeaders(extra) {
+      return { 'X-Access-Token': accessToken, ...extra };
+    }
+
+    // ── Card names datalist ───────────────────────────────────────────────────
+    async function loadCardNames() {
+      try {
+        const res = await fetch('/api/cards', { headers: authHeaders() });
+        if (!res.ok) return;
+        const names = await res.json();
+        const dl = document.getElementById('card-datalist');
+        for (const name of names) {
+          const opt = document.createElement('option');
+          opt.value = name;
+          dl.appendChild(opt);
+        }
+      } catch {}
+    }
+
+    // ── Wishlist CRUD ─────────────────────────────────────────────────────────
+    async function loadAndRender() {
+      try {
+        const res = await fetch('/api/wishlist', { headers: authHeaders() });
+        if (!res.ok) return;
+        const entries = await res.json();
+        renderList(entries);
+      } catch {}
+    }
+
+    function renderList(entries) {
+      const list  = document.getElementById('wl-list');
+      const empty = document.getElementById('wl-empty');
+      list.innerHTML = '';
+
+      if (entries.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      for (const entry of entries) {
+        const hints = [entry.preferred_rarity, entry.preferred_set]
+          .filter(Boolean).join(' · ');
+        const el = document.createElement('div');
+        el.className = 'wl-entry';
+        el.innerHTML = `
+          <div class="wl-entry-info">
+            <div class="wl-player">${escapeHtml(entry.player_name)}</div>
+            <div class="wl-card-name">${escapeHtml(entry.card_name)}</div>
+            ${hints ? `<div class="wl-hints">${escapeHtml(hints)}</div>` : ''}
+          </div>
+          <button class="wl-remove" data-id="${entry.id}">Remove</button>`;
+        list.appendChild(el);
+      }
+
+      list.querySelectorAll('.wl-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await fetch(`/api/wishlist/${btn.dataset.id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          });
+          loadAndRender();
+        });
+      });
+    }
+
+    document.getElementById('wl-add-btn').addEventListener('click', async () => {
+      const player = wlPlayer.value.trim();
+      const card   = wlCard.value.trim();
+      if (!player || !card) {
+        wlFormError.textContent = 'Name and card are required.';
+        return;
+      }
+      wlFormError.textContent = '';
+
+      const res = await fetch('/api/wishlist', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          player_name:      player,
+          card_name:        card,
+          preferred_rarity: wlRarity.value.trim() || null,
+          preferred_set:    wlSet.value.trim()    || null,
+        }),
+      });
+
+      if (res.status === 400) {
+        const err = await res.json();
+        wlFormError.textContent = err.error || 'Invalid entry.';
+        return;
+      }
+      if (!res.ok) { wlFormError.textContent = 'Server error.'; return; }
+
+      localStorage.setItem(PLAYER_KEY, player);
+      wlCard.value   = '';
+      wlRarity.value = '';
+      wlSet.value    = '';
+      loadAndRender();
+    });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    function onAuthenticated() {
+      wlPlayer.value = localStorage.getItem(PLAYER_KEY) || '';
+      loadCardNames();
+      loadAndRender();
+    }
+
+    initAuth();
+  </script>
+</body>
+</html>

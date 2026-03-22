@@ -59,6 +59,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/wishlist")
+def wishlist_page():
+    return render_template("wishlist.html")
+
+
 @app.route("/api/recognize", methods=["POST"])
 @limiter.limit("60 per minute")
 def recognize():
