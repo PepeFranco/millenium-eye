@@ -448,6 +448,7 @@
       const videoLandscape    = video.videoWidth   > video.videoHeight;
       videoRotated = containerPortrait && videoLandscape;
       console.log(`[rotation] wrap=${wrap.offsetWidth}x${wrap.offsetHeight} video=${video.videoWidth}x${video.videoHeight} portrait=${containerPortrait} landscape=${videoLandscape} rotated=${videoRotated}`);
+      statusText.textContent = `wrap=${wrap.offsetWidth}x${wrap.offsetHeight} vid=${video.videoWidth}x${video.videoHeight} rot=${videoRotated}`;
 
       if (videoRotated) {
         const scale = Math.min(
