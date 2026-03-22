@@ -20,6 +20,10 @@ from recogniser import load_index, recognise_card
 
 app = Flask(__name__)
 
+# Load the ORB index at import time so Gunicorn's preload_app shares it
+# across workers. Also works when running with `python3 app.py` directly.
+load_index()
+
 # ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
@@ -83,5 +87,4 @@ def recognize():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    load_index()
     app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)
