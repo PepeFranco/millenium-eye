@@ -18,7 +18,7 @@ ORB_NAM_PATH   = "data/orb_card_names.json"
 
 ORB_FEATURES   = 500   # must match build_database.py
 RATIO_THRESH   = 0.75  # Lowe ratio test
-MIN_GOOD_MATCHES = 8   # minimum votes to accept a match
+MIN_GOOD_MATCHES = 6   # minimum votes to accept a match
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,6 @@ def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
     return {
         "card_id":      best_id,
         "card_name":    _id_to_name.get(best_id, str(best_id)),
-        "confidence":   round(best_votes / len(des), 4),
+        "confidence":   round(min(best_votes / 30, 1.0), 4),  # 30 matches = 100%
         "good_matches": best_votes,
     }
