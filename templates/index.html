@@ -62,6 +62,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
 
     #video {
@@ -450,23 +451,24 @@
       statusText.textContent = `screen=${window.innerWidth}x${window.innerHeight} vid=${video.videoWidth}x${video.videoHeight} rot=${videoRotated}`;
 
       if (videoRotated) {
-        const scale = Math.min(
-          video.offsetWidth  / video.videoHeight,
-          video.offsetHeight / video.videoWidth
-        );
-        video.style.transform = `rotate(90deg) scale(${scale})`;
-        video.style.width     = `${video.videoWidth}px`;
-        video.style.height    = `${video.videoHeight}px`;
+        // Center the video in the wrap, swap w/h so it fills correctly after 90° rotation
+        video.style.position  = 'absolute';
+        video.style.left      = '50%';
+        video.style.top       = '50%';
+        video.style.width     = `${wrap.offsetHeight}px`;
+        video.style.height    = `${wrap.offsetWidth}px`;
         video.style.maxWidth  = 'none';
         video.style.maxHeight = 'none';
-        video.style.position  = 'absolute';
+        video.style.transform = 'translate(-50%, -50%) rotate(90deg)';
       } else {
+        video.style.position  = '';
+        video.style.left      = '';
+        video.style.top       = '';
         video.style.transform = '';
         video.style.width     = '';
         video.style.height    = '';
         video.style.maxWidth  = '';
         video.style.maxHeight = '';
-        video.style.position  = '';
       }
     }
 
@@ -483,22 +485,28 @@
       const vh = video.videoHeight;
       if (!vw || !vh) return;
 
+      // Determine capture dimensions (must be declared here so toBlob callback can access them)
+      let capW, capH;
       if (videoRotated) {
-        // Rotate the captured frame 90° so the server gets the correct orientation
-        const capH = CAPTURE_W;
-        const capW = Math.round(CAPTURE_W * vh / vw);
-        captureCanvas.width  = capW;
-        captureCanvas.height = capH;
+        capH = CAPTURE_W;
+        capW = Math.round(CAPTURE_W * vh / vw);
+      } else {
+        capW = CAPTURE_W;
+        capH = Math.round(CAPTURE_W * vh / vw);
+      }
+
+      captureCanvas.width  = capW;
+      captureCanvas.height = capH;
+
+      if (videoRotated) {
+        // Rotate 90° CW so the server gets a correctly oriented portrait frame
         capCtx.save();
-        capCtx.translate(capW / 2, capH / 2);
+        capCtx.translate(capW, 0);
         capCtx.rotate(Math.PI / 2);
-        capCtx.drawImage(video, -capH / 2, -capW / 2, capH, capW);
+        capCtx.drawImage(video, 0, 0, capH, capW);
         capCtx.restore();
       } else {
-        const scale = CAPTURE_W / vw;
-        captureCanvas.width  = CAPTURE_W;
-        captureCanvas.height = Math.round(vh * scale);
-        capCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+        capCtx.drawImage(video, 0, 0, capW, capH);
       }
 
       captureCanvas.toBlob(async (blob) => {
@@ -523,13 +531,14 @@
 
           const data = await res.json();
 
-          // sync overlay size with displayed video element
-          overlay.width  = video.offsetWidth;
-          overlay.height = video.offsetHeight;
+          // sync overlay to the camera-wrap (accounts for CSS rotation on the video)
+          const wrap = video.parentElement;
+          overlay.width  = wrap.offsetWidth;
+          overlay.height = wrap.offsetHeight;
 
           // scale factors: captured coords → displayed coords
-          const dispScaleX = video.offsetWidth  / capW;
-          const dispScaleY = video.offsetHeight / capH;
+          const dispScaleX = wrap.offsetWidth  / capW;
+          const dispScaleY = wrap.offsetHeight / capH;
 
           drawDetections(data.detections, dispScaleX, dispScaleY);
 
