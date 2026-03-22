@@ -447,6 +447,7 @@
       const containerPortrait = wrap.offsetHeight > wrap.offsetWidth;
       const videoLandscape    = video.videoWidth   > video.videoHeight;
       videoRotated = containerPortrait && videoLandscape;
+      console.log(`[rotation] wrap=${wrap.offsetWidth}x${wrap.offsetHeight} video=${video.videoWidth}x${video.videoHeight} portrait=${containerPortrait} landscape=${videoLandscape} rotated=${videoRotated}`);
 
       if (videoRotated) {
         const scale = Math.min(
@@ -565,6 +566,7 @@
           audio: false,
         });
         video.srcObject = stream;
+        video.addEventListener('loadedmetadata', checkVideoRotation);
         await video.play();
         checkVideoRotation();
         statusDot.className = 'scanning';
