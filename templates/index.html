@@ -190,6 +190,10 @@
       color: #c9a84c;
       margin-bottom: 5px;
     }
+    .wanted-card .wc-by-label {
+      opacity: 0.6;
+      font-style: italic;
+    }
 
     .wanted-card .conf-bar {
       height: 3px;
@@ -491,7 +495,7 @@
         wEl.id = `wanted-${match.card_id}`;
         wEl.innerHTML = `
           <div class="wc-name" title="${escapeHtml(match.card_name)}">${escapeHtml(match.card_name)}</div>
-          <div class="wc-by">${byLines}</div>
+          <div class="wc-by"><span class="wc-by-label">Wanted by: </span>${byLines}</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${pct}%"></div></div>`;
         wantedList.prepend(wEl);
         wantedSection.classList.add('has-items');
