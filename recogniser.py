@@ -34,7 +34,7 @@ _clahe      = None   # CLAHE instance for contrast normalisation
 
 
 def load_index(des_path=ORB_DES_PATH, ids_path=ORB_IDS_PATH, nam_path=ORB_NAM_PATH):
-    global _orb, _flann, _card_ids, _id_to_name
+    global _orb, _flann, _card_ids, _id_to_name, _clahe
 
     _orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
     _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
