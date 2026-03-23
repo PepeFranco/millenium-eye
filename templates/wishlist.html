@@ -96,6 +96,13 @@
     }
     .wl-row .wl-label { flex: 1; }
 
+    .wl-optional {
+      font-size: 0.7em;
+      color: #555;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
     #wl-add-btn {
       background: #c9a84c;
       border: none;
@@ -306,11 +313,11 @@
       </label>
       <div class="wl-row">
         <label class="wl-label">
-          Preferred rarity
+          Preferred rarity <span class="wl-optional">(optional)</span>
           <input id="wl-rarity" class="wl-input" type="text" placeholder="e.g. Ultra Rare" autocomplete="off" />
         </label>
         <label class="wl-label">
-          Preferred set
+          Preferred set <span class="wl-optional">(optional)</span>
           <input id="wl-set" class="wl-input" type="text" placeholder="e.g. LOB" autocomplete="off" />
         </label>
       </div>
