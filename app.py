@@ -9,6 +9,7 @@ Production:
 """
 
 import os
+import time
 import numpy as np
 import cv2
 from flask import Flask, render_template, request, jsonify, abort
@@ -69,13 +70,17 @@ def wishlist_page():
 def recognize():
     check_token()
 
+    t0 = time.perf_counter()
+
     data = request.get_data()
     arr = np.frombuffer(data, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
         return jsonify({"error": "invalid image"}), 400
+    t_decode = time.perf_counter()
 
     detections = detect_cards(frame)
+    t_detect = time.perf_counter()
 
     results = []
     for det in detections:
@@ -85,6 +90,16 @@ def recognize():
             "low_confidence": bool(det["low_confidence"]),
             "match": match,
         })
+    t_recognise = time.perf_counter()
+
+    print(
+        f"[timing] decode={1000*(t_decode-t0):.0f}ms  "
+        f"detect={1000*(t_detect-t_decode):.0f}ms  "
+        f"recognise={1000*(t_recognise-t_detect):.0f}ms  "
+        f"total={1000*(t_recognise-t0):.0f}ms  "
+        f"cards={len(detections)}",
+        flush=True,
+    )
 
     return jsonify({"detections": results})
 
