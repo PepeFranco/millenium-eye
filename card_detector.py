@@ -34,6 +34,14 @@ def sort_corners(pts):
 
 def is_card_back(region_bgr):
     """Return True if the region looks like a card back (dark purple/black)."""
+    # All card fronts have a light description text box in the bottom ~30%.
+    # If that area has enough bright pixels, it's definitely a card front —
+    # this avoids false positives on Fusion (purple border) and dark-art cards.
+    h, w = region_bgr.shape[:2]
+    bottom = cv2.cvtColor(region_bgr[int(h * 0.68):, :], cv2.COLOR_BGR2GRAY)
+    if (bottom > 180).sum() / bottom.size > 0.12:
+        return False
+
     hsv = cv2.cvtColor(region_bgr, cv2.COLOR_BGR2HSV)
     # Card back is a dark purple — hue ~130–160, low value
     mask = cv2.inRange(hsv, (120, 30, 0), (165, 255, 80))
