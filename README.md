@@ -1,8 +1,8 @@
 # Millennium Eye — Yu-Gi-Oh Card Scanner
 
-A web app that uses your phone or laptop camera to automatically recognise Yu-Gi-Oh cards in real time. Point the camera at cards on a table or in a binder and the app identifies them instantly — no typing, no searching.
+A web app that uses your phone or laptop camera to recognise Yu-Gi-Oh cards. Point the camera at cards on a table or in a binder and the app will attempt to identify them.
 
-Built for a local Yu-Gi-Oh community to use as a **binder scanner at conventions**: scan someone's binder, and the app will alert you the moment it spots a card on your wishlist.
+Built for a local Yu-Gi-Oh community to use as a binder scanner at conventions: scan someone's binder, and the app highlights any card that appears on your wishlist.
 
 ---
 
@@ -14,7 +14,7 @@ Built for a local Yu-Gi-Oh community to use as a **binder scanner at conventions
 4. The app draws a coloured border around every card it detects and shows the name in the sidebar
 5. Cards on your wishlist are highlighted in **gold** with the name of who wants them and their preferred rarity/set
 
-> The app recognises cards by matching visual features against a database of ~12,000 card images. It works on sleeved cards, binders, and cards held in hand.
+> The app recognises cards by matching visual features against a database of ~12,000 card images. Results vary depending on lighting, glare, and card condition — see the known limitations section below.
 
 ---
 
