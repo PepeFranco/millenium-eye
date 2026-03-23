@@ -66,9 +66,9 @@ def detect_cards(frame_bgr):
     # --- pre-processing ---
     gray   = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     blur   = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges  = cv2.Canny(blur, 50, 150)
+    edges  = cv2.Canny(blur, 30, 100)
     kernel = np.ones((3, 3), np.uint8)
-    edges  = cv2.dilate(edges, kernel, iterations=2)
+    edges  = cv2.dilate(edges, kernel, iterations=3)
 
     # --- contour detection ---
     contours, _ = cv2.findContours(

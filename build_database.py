@@ -32,11 +32,55 @@ ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
 ORB_IDS_PATH = os.path.join(DATA_DIR, "orb_card_ids.npy")
 ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 
-ORB_FEATURES   = 200  # keypoints per card image
+ORB_FEATURES   = 200        # keypoints per card image
+TCG_DATE_CUTOFF = "2010-04-26"  # only index cards released on or before this date (None = all cards)
 SLEEP_MIN      = 0.3  # seconds between requests (min)
 SLEEP_MAX      = 0.6  # seconds between requests (max) — jitter avoids pattern detection
 BATCH_PAUSE_S  = 5.0  # longer pause every N requests
 BATCH_SIZE     = 100  # how many requests between long pauses
+
+# ---------------------------------------------------------------------------
+# Step 1a — Fetch allowed card names (filtered by TCG release date)
+# ---------------------------------------------------------------------------
+
+SETS_JSON = os.path.join(DATA_DIR, "sets.json")
+
+def fetch_allowed_card_names():
+    """Return a set of card names whose sets were released on or before TCG_DATE_CUTOFF.
+    Returns None if no cutoff is configured (include everything)."""
+    if not TCG_DATE_CUTOFF:
+        return None
+
+    if os.path.exists(SETS_JSON):
+        print(f"[1/4] sets.json already exists, skipping fetch.")
+        with open(SETS_JSON) as f:
+            all_sets = json.load(f)
+    else:
+        print("[1/4] Fetching set list from YGOPRODECK …")
+        resp = requests.get("https://db.ygoprodeck.com/api/v7/cardsets.php", timeout=30)
+        resp.raise_for_status()
+        all_sets = resp.json()
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(SETS_JSON, "w") as f:
+            json.dump(all_sets, f)
+
+    allowed_set_names = {
+        s["set_name"] for s in all_sets
+        if s.get("tcg_date") and s["tcg_date"] <= TCG_DATE_CUTOFF
+    }
+    print(f"    {len(allowed_set_names)} sets released on or before {TCG_DATE_CUTOFF}")
+
+    # Load cards.json to find which card names appear in those sets
+    with open(CARDS_JSON) as f:
+        cards = json.load(f)
+
+    allowed_names = {
+        card["name"] for card in cards
+        if any(cs["set_name"] in allowed_set_names for cs in card.get("card_sets", []))
+    }
+    print(f"    {len(allowed_names):,} cards within cutoff")
+    return allowed_names
+
 
 # ---------------------------------------------------------------------------
 # Step 1 — Fetch card list
@@ -164,7 +208,14 @@ def build_orb_index(images_meta):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    cards      = fetch_card_list()
-    image_meta = download_images(cards)
+    allowed_names = fetch_allowed_card_names()
+    cards         = fetch_card_list()
+    image_meta    = download_images(cards)
+
+    if allowed_names is not None:
+        before = len(image_meta)
+        image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
+        print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
+
     build_orb_index(image_meta)
     print("\nDone. Database is ready.")
