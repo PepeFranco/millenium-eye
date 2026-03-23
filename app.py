@@ -66,7 +66,7 @@ def wishlist_page():
 
 
 @app.route("/api/recognize", methods=["POST"])
-@limiter.limit("600 per minute")
+@limiter.limit("600 per minute", override_defaults=True)
 def recognize():
     check_token()
 
