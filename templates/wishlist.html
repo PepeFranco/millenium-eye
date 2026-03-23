@@ -185,6 +185,39 @@
     }
     .wl-remove:hover { border-color: #ff4136; color: #ff4136; }
 
+    /* ── Card searchable dropdown ──────────────────────── */
+    .card-select-wrap { position: relative; }
+
+    #card-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1a1a1a;
+      border: 1px solid #c9a84c;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 50;
+      display: none;
+    }
+    #card-dropdown.open { display: block; }
+
+    .card-option {
+      padding: 8px 11px;
+      font-size: 0.88rem;
+      color: #e8d5a3;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-option:hover,
+    .card-option.active { background: #2a1e06; color: #c9a84c; }
+
+    #wl-card-search.invalid { border-color: #ff4136; }
+
     /* ── Token gate ───────────────────────────────────── */
     #token-gate {
       position: fixed;
@@ -266,8 +299,10 @@
       </label>
       <label class="wl-label">
         Card name
-        <input id="wl-card" class="wl-input" type="text" list="card-datalist" placeholder="Start typing…" autocomplete="off" />
-        <datalist id="card-datalist"></datalist>
+        <div class="card-select-wrap">
+          <input id="wl-card-search" class="wl-input" type="text" placeholder="Start typing…" autocomplete="off" />
+          <div id="card-dropdown"></div>
+        </div>
       </label>
       <div class="wl-row">
         <label class="wl-label">
@@ -298,11 +333,12 @@
     const tokenInput  = document.getElementById('token-input');
     const tokenSubmit = document.getElementById('token-submit');
     const tokenError  = document.getElementById('token-error');
-    const wlPlayer    = document.getElementById('wl-player');
-    const wlCard      = document.getElementById('wl-card');
-    const wlRarity    = document.getElementById('wl-rarity');
-    const wlSet       = document.getElementById('wl-set');
-    const wlFormError = document.getElementById('wl-form-error');
+    const wlPlayer      = document.getElementById('wl-player');
+    const wlCardSearch  = document.getElementById('wl-card-search');
+    const cardDropdown  = document.getElementById('card-dropdown');
+    const wlRarity      = document.getElementById('wl-rarity');
+    const wlSet         = document.getElementById('wl-set');
+    const wlFormError   = document.getElementById('wl-form-error');
 
     let accessToken = localStorage.getItem(TOKEN_KEY) || '';
 
@@ -357,20 +393,91 @@
       return { 'X-Access-Token': accessToken, ...extra };
     }
 
-    // ── Card names datalist ───────────────────────────────────────────────────
+    // ── Searchable card dropdown ──────────────────────────────────────────────
+    let allCardNames   = [];   // full sorted list from /api/cards
+    let selectedCard   = null; // the confirmed valid selection
+    let activeIndex    = -1;   // keyboard-highlighted option index
+
     async function loadCardNames() {
       try {
         const res = await fetch('/api/cards', { headers: authHeaders() });
         if (!res.ok) return;
-        const names = await res.json();
-        const dl = document.getElementById('card-datalist');
-        for (const name of names) {
-          const opt = document.createElement('option');
-          opt.value = name;
-          dl.appendChild(opt);
-        }
+        allCardNames = await res.json();
       } catch {}
     }
+
+    function openDropdown(matches) {
+      cardDropdown.innerHTML = '';
+      activeIndex = -1;
+      if (matches.length === 0) { cardDropdown.classList.remove('open'); return; }
+
+      matches.slice(0, 50).forEach((name, i) => {
+        const el = document.createElement('div');
+        el.className = 'card-option';
+        el.textContent = name;
+        el.addEventListener('mousedown', e => e.preventDefault()); // keep focus on input
+        el.addEventListener('click', () => confirmSelection(name));
+        cardDropdown.appendChild(el);
+      });
+      cardDropdown.classList.add('open');
+    }
+
+    function closeDropdown() {
+      cardDropdown.classList.remove('open');
+      activeIndex = -1;
+    }
+
+    function confirmSelection(name) {
+      selectedCard = name;
+      wlCardSearch.value = name;
+      wlCardSearch.classList.remove('invalid');
+      closeDropdown();
+    }
+
+    function highlightOption(index) {
+      const opts = cardDropdown.querySelectorAll('.card-option');
+      opts.forEach(o => o.classList.remove('active'));
+      if (index >= 0 && index < opts.length) {
+        opts[index].classList.add('active');
+        opts[index].scrollIntoView({ block: 'nearest' });
+      }
+      activeIndex = index;
+    }
+
+    wlCardSearch.addEventListener('input', () => {
+      selectedCard = null;
+      wlCardSearch.classList.remove('invalid');
+      const q = wlCardSearch.value.trim().toLowerCase();
+      if (!q) { closeDropdown(); return; }
+      const matches = allCardNames.filter(n => n.toLowerCase().includes(q));
+      openDropdown(matches);
+    });
+
+    wlCardSearch.addEventListener('keydown', e => {
+      const opts = cardDropdown.querySelectorAll('.card-option');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightOption(Math.min(activeIndex + 1, opts.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightOption(Math.max(activeIndex - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIndex >= 0 && opts[activeIndex]) {
+          confirmSelection(opts[activeIndex].textContent);
+        }
+      } else if (e.key === 'Escape') {
+        closeDropdown();
+      }
+    });
+
+    wlCardSearch.addEventListener('blur', () => {
+      // If the user typed something but never selected a valid card, mark invalid
+      if (wlCardSearch.value.trim() && !selectedCard) {
+        wlCardSearch.classList.add('invalid');
+      }
+      closeDropdown();
+    });
 
     // ── Wishlist CRUD ─────────────────────────────────────────────────────────
     async function loadAndRender() {
@@ -421,9 +528,10 @@
 
     document.getElementById('wl-add-btn').addEventListener('click', async () => {
       const player = wlPlayer.value.trim();
-      const card   = wlCard.value.trim();
-      if (!player || !card) {
-        wlFormError.textContent = 'Name and card are required.';
+      if (!player) { wlFormError.textContent = 'Your name is required.'; return; }
+      if (!selectedCard) {
+        wlCardSearch.classList.add('invalid');
+        wlFormError.textContent = 'Select a card from the list.';
         return;
       }
       wlFormError.textContent = '';
@@ -433,7 +541,7 @@
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           player_name:      player,
-          card_name:        card,
+          card_name:        selectedCard,
           preferred_rarity: wlRarity.value.trim() || null,
           preferred_set:    wlSet.value.trim()    || null,
         }),
@@ -447,9 +555,11 @@
       if (!res.ok) { wlFormError.textContent = 'Server error.'; return; }
 
       localStorage.setItem(PLAYER_KEY, player);
-      wlCard.value   = '';
-      wlRarity.value = '';
-      wlSet.value    = '';
+      selectedCard         = null;
+      wlCardSearch.value   = '';
+      wlCardSearch.classList.remove('invalid');
+      wlRarity.value       = '';
+      wlSet.value          = '';
       loadAndRender();
     });
 
