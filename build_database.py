@@ -125,7 +125,8 @@ def build_orb_index(images_meta):
         return
 
     print("[3/3] Computing ORB descriptors …")
-    orb = cv2.ORB_create(nfeatures=ORB_FEATURES)
+    orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
     all_des   = []   # list of (N, 32) uint8 arrays
     all_ids   = []   # card_id repeated N times per image
@@ -138,7 +139,9 @@ def build_orb_index(images_meta):
         img = cv2.imread(path)
         if img is None:
             continue
-        _, des = orb.detectAndCompute(img, None)
+        gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        enhanced = clahe.apply(gray)
+        _, des = orb.detectAndCompute(enhanced, None)
         if des is None:
             continue
         all_des.append(des)

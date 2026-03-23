@@ -30,12 +30,14 @@ _orb        = None
 _flann      = None
 _card_ids   = None   # np.int32 array, one entry per descriptor row
 _id_to_name = None   # dict int → str
+_clahe      = None   # CLAHE instance for contrast normalisation
 
 
 def load_index(des_path=ORB_DES_PATH, ids_path=ORB_IDS_PATH, nam_path=ORB_NAM_PATH):
     global _orb, _flann, _card_ids, _id_to_name
 
-    _orb = cv2.ORB_create(nfeatures=ORB_FEATURES)
+    _orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
+    _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
     print("[recogniser] Loading ORB descriptors …")
     des_matrix = np.load(des_path)   # (N, 32) uint8
@@ -87,7 +89,9 @@ def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
     """
     _ensure_loaded()
 
-    _, des = _orb.detectAndCompute(card_image_bgr, None)
+    gray = cv2.cvtColor(card_image_bgr, cv2.COLOR_BGR2GRAY)
+    enhanced = _clahe.apply(gray)
+    _, des = _orb.detectAndCompute(enhanced, None)
     if des is None or len(des) < 2:
         return None
 
