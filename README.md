@@ -40,7 +40,7 @@ Built for a local Yu-Gi-Oh community to use as a binder scanner at conventions: 
 
 ### Step 1 — Open the app
 
-Go to the URL your community uses (e.g. `https://millenium-eye.yourdomain.com`).
+Go to the URL your community uses (e.g. `https://millenium-eye.ink`).
 
 You will see a password prompt on first visit.
 
