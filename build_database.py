@@ -1,24 +1,25 @@
 """
-Phase 2 — Build the card hash database.
+Phase 2 — Build the card embedding database.
 
 Steps:
   1. Fetch full card list from YGOPRODECK API → data/cards.json
   2. Download small card images          → data/images/{card_id}.jpg
-  3. Compute ORB descriptors for every image → data/orb_descriptors.npy
-                                              data/orb_card_ids.npy
-                                              data/orb_card_names.json
+  3. Compute CNN embeddings for every image  → data/cnn_embeddings.npy
+                                              data/cnn_card_ids.npy
+                                              data/cnn_card_names.json
 """
 
 import json
 import os
-import pickle
 import random
-import sqlite3
 import time
 
 import cv2
 import numpy as np
 import requests
+import torch
+import torchvision.transforms as T
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
@@ -28,11 +29,10 @@ DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 CARDS_JSON = os.path.join(DATA_DIR, "cards.json")
 FAILED_TXT   = os.path.join(DATA_DIR, "failed_downloads.txt")
-ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
-ORB_IDS_PATH = os.path.join(DATA_DIR, "orb_card_ids.npy")
-ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
+CNN_EMB_PATH = os.path.join(DATA_DIR, "cnn_embeddings.npy")
+CNN_IDS_PATH = os.path.join(DATA_DIR, "cnn_card_ids.npy")
+CNN_NAM_PATH = os.path.join(DATA_DIR, "cnn_card_names.json")
 
-ORB_FEATURES   = 200        # keypoints per card image
 TCG_DATE_CUTOFF = "2010-04-26"  # only index cards released on or before this date (None = all cards)
 SLEEP_MIN      = 0.3  # seconds between requests (min)
 SLEEP_MAX      = 0.6  # seconds between requests (max) — jitter avoids pattern detection
@@ -160,21 +160,31 @@ def download_images(cards):
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — Compute ORB descriptors and export index
+# Step 3 — Compute CNN embeddings and export index
 # ---------------------------------------------------------------------------
 
-def build_orb_index(images_meta):
-    if os.path.exists(ORB_DES_PATH):
-        print("[3/3] ORB index already exists, skipping.")
+_transform = T.Compose([
+    T.ToTensor(),
+    T.Resize((224, 224), antialias=True),
+    T.Normalize(mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]),
+])
+
+
+def build_cnn_index(images_meta):
+    if os.path.exists(CNN_EMB_PATH):
+        print("[3/3] CNN index already exists, skipping.")
         return
 
-    print("[3/3] Computing ORB descriptors …")
-    orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    print("[3/3] Computing CNN embeddings (MobileNetV3-Small) …")
+    weights   = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+    m         = mobilenet_v3_small(weights=weights)
+    extractor = torch.nn.Sequential(m.features, m.avgpool, torch.nn.Flatten(1))
+    extractor.eval()
 
-    all_des   = []   # list of (N, 32) uint8 arrays
-    all_ids   = []   # card_id repeated N times per image
-    id_to_name = {}  # card_id → card_name
+    all_embs   = []
+    all_ids    = []
+    id_to_name = {}
 
     for entry in tqdm(images_meta, unit="card"):
         path = os.path.join(IMAGES_DIR, f"{entry['card_id']}.jpg")
@@ -183,24 +193,27 @@ def build_orb_index(images_meta):
         img = cv2.imread(path)
         if img is None:
             continue
-        gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        enhanced = clahe.apply(gray)
-        _, des = orb.detectAndCompute(enhanced, None)
-        if des is None:
-            continue
-        all_des.append(des)
-        all_ids.extend([entry["card_id"]] * len(des))
+        rgb    = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        tensor = _transform(rgb).unsqueeze(0)
+        with torch.no_grad():
+            vec = extractor(tensor).squeeze().numpy()  # (576,)
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+        all_embs.append(vec)
+        all_ids.append(entry["card_id"])
         id_to_name[entry["card_id"]] = entry["card_name"]
 
-    des_matrix = np.vstack(all_des).astype(np.uint8)
+    emb_matrix = np.vstack(all_embs).astype(np.float32)
     ids_array  = np.array(all_ids, dtype=np.int32)
 
-    np.save(ORB_DES_PATH, des_matrix)
-    np.save(ORB_IDS_PATH, ids_array)
-    with open(ORB_NAM_PATH, "w") as f:
+    np.save(CNN_EMB_PATH, emb_matrix)
+    np.save(CNN_IDS_PATH, ids_array)
+    with open(CNN_NAM_PATH, "w") as f:
         json.dump({str(k): v for k, v in id_to_name.items()}, f)
 
-    print(f"    {des_matrix.shape[0]:,} descriptors for {len(id_to_name):,} cards → {ORB_DES_PATH}")
+    print(f"    {emb_matrix.shape[0]:,} embeddings ({emb_matrix.shape[1]}d) "
+          f"for {len(id_to_name):,} cards → {CNN_EMB_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -217,5 +230,5 @@ if __name__ == "__main__":
         image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
         print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
 
-    build_orb_index(image_meta)
+    build_cnn_index(image_meta)
     print("\nDone. Database is ready.")

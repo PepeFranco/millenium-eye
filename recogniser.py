@@ -1,73 +1,71 @@
 """
-Phase 4 — Card recognition engine (ORB + FLANN).
+Card recognition engine — MobileNetV3-Small CNN embeddings.
 
-Loads pre-computed ORB descriptors for all cards, builds a FLANN-LSH index,
-and matches query card images by voting on nearest-neighbour descriptors.
+Loads pre-computed 576-dim feature vectors for all cards, then matches
+query card images by cosine similarity (fast numpy dot product).
 """
 
 import json
-import logging
+import os
 from typing import Optional
 
 import cv2
 import numpy as np
+import torch
+import torchvision.transforms as T
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 
-ORB_DES_PATH   = "data/orb_descriptors.npy"
-ORB_IDS_PATH   = "data/orb_card_ids.npy"
-ORB_NAM_PATH   = "data/orb_card_names.json"
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+EMB_PATH  = os.path.join(DATA_DIR, "cnn_embeddings.npy")
+IDS_PATH  = os.path.join(DATA_DIR, "cnn_card_ids.npy")
+NAM_PATH  = os.path.join(DATA_DIR, "cnn_card_names.json")
 
-ORB_FEATURES   = 200   # must match build_database.py
-RATIO_THRESH   = 0.75  # Lowe ratio test
-MIN_GOOD_MATCHES = 6   # minimum votes to accept a match
-
-logger = logging.getLogger(__name__)
+SIMILARITY_THRESHOLD = 0.60   # cosine similarity; tune up if too many false matches
 
 # ---------------------------------------------------------------------------
 # Index — loaded once at startup
 # ---------------------------------------------------------------------------
 
-_orb        = None
-_flann      = None
-_card_ids   = None   # np.int32 array, one entry per descriptor row
-_id_to_name = None   # dict int → str
-_clahe      = None   # CLAHE instance for contrast normalisation
+_extractor  = None
+_embeddings = None   # (N, 576) float32, L2-normalised rows
+_card_ids   = None   # (N,) int32
+_id_to_name = None   # str(card_id) → card_name
+
+_transform = T.Compose([
+    T.ToTensor(),
+    T.Resize((224, 224), antialias=True),
+    T.Normalize(mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]),
+])
 
 
-def load_index(des_path=ORB_DES_PATH, ids_path=ORB_IDS_PATH, nam_path=ORB_NAM_PATH):
-    global _orb, _flann, _card_ids, _id_to_name, _clahe
-
-    _orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
-    _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-
-    print("[recogniser] Loading ORB descriptors …")
-    des_matrix = np.load(des_path)   # (N, 32) uint8
-    _card_ids  = np.load(ids_path)   # (N,) int32
-
-    with open(nam_path) as f:
-        raw = json.load(f)
-    _id_to_name = {int(k): v for k, v in raw.items()}
-
-    print(f"[recogniser] Building FLANN index over {des_matrix.shape[0]:,} descriptors …")
-    # LSH index for binary (ORB/BRIEF) descriptors
-    index_params = dict(algorithm=6,          # FLANN_INDEX_LSH
-                        table_number=12,
-                        key_size=20,
-                        multi_probe_level=2)
-    _flann = cv2.FlannBasedMatcher(index_params, dict(checks=50))
-    _flann.add([des_matrix])
-    _flann.train()
-
-    print(f"[recogniser] Ready — {len(_id_to_name):,} cards indexed.")
+def _build_extractor():
+    weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+    m = mobilenet_v3_small(weights=weights)
+    extractor = torch.nn.Sequential(m.features, m.avgpool, torch.nn.Flatten(1))
+    extractor.eval()
+    return extractor
 
 
-def _ensure_loaded():
-    if _flann is None:
-        load_index()
+def load_index():
+    global _extractor, _embeddings, _card_ids, _id_to_name
+
+    print("[recogniser] Loading MobileNetV3-Small …", flush=True)
+    _extractor = _build_extractor()
+
+    _embeddings = np.load(EMB_PATH)   # (N, 576) float32
+    _card_ids   = np.load(IDS_PATH)   # (N,) int32
+
+    with open(NAM_PATH) as f:
+        _id_to_name = json.load(f)    # str(id) → name
+
+    print(f"[recogniser] Ready — {len(_card_ids):,} card embeddings loaded.", flush=True)
 
 
 def get_valid_card_names() -> list[str]:
     """Return a sorted, deduplicated list of all card names in the index."""
-    _ensure_loaded()
+    if _id_to_name is None:
+        return []
     return sorted(set(_id_to_name.values()))
 
 
@@ -75,54 +73,38 @@ def get_valid_card_names() -> list[str]:
 # Recognition
 # ---------------------------------------------------------------------------
 
+def _embed(card_bgr: np.ndarray) -> np.ndarray:
+    """Return an L2-normalised 576-dim embedding for a BGR card image."""
+    rgb    = cv2.cvtColor(card_bgr, cv2.COLOR_BGR2RGB)
+    tensor = _transform(rgb).unsqueeze(0)          # (1, 3, 224, 224)
+    with torch.no_grad():
+        vec = _extractor(tensor).squeeze().numpy() # (576,)
+    norm = np.linalg.norm(vec)
+    return vec / norm if norm > 0 else vec
+
+
 def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
     """
-    Match a BGR card image against the ORB index.
+    Match a BGR card image against the embedding index.
 
-    Returns a result dict on confident match, None otherwise:
+    Returns a dict on confident match, None otherwise:
         {
-            "card_id":      int,
-            "card_name":    str,
-            "confidence":   float,   # good_matches / total_query_descriptors
-            "good_matches": int
+            "card_id":    int,
+            "card_name":  str,
+            "confidence": float  (0–1)
         }
     """
-    _ensure_loaded()
+    emb   = _embed(card_image_bgr)
+    sims  = _embeddings @ emb          # cosine similarity, shape (N,)
+    idx   = int(np.argmax(sims))
+    score = float(sims[idx])
 
-    gray = cv2.cvtColor(card_image_bgr, cv2.COLOR_BGR2GRAY)
-    enhanced = _clahe.apply(gray)
-    _, des = _orb.detectAndCompute(enhanced, None)
-    if des is None or len(des) < 2:
+    if score < SIMILARITY_THRESHOLD:
         return None
 
-    # knnMatch with k=2 for Lowe ratio test
-    try:
-        knn = _flann.knnMatch(des, k=2)
-    except cv2.error:
-        return None
-
-    # Collect good match votes
-    votes: dict[int, int] = {}
-    for pair in knn:
-        if len(pair) < 2:
-            continue
-        m, n = pair
-        if m.distance < RATIO_THRESH * n.distance:
-            card_id = int(_card_ids[m.trainIdx])
-            votes[card_id] = votes.get(card_id, 0) + 1
-
-    if not votes:
-        return None
-
-    best_id    = max(votes, key=votes.get)
-    best_votes = votes[best_id]
-
-    if best_votes < MIN_GOOD_MATCHES:
-        return None
-
+    card_id = int(_card_ids[idx])
     return {
-        "card_id":      best_id,
-        "card_name":    _id_to_name.get(best_id, str(best_id)),
-        "confidence":   round(min(best_votes / 30, 1.0), 4),  # 30 matches = 100%
-        "good_matches": best_votes,
+        "card_id":    card_id,
+        "card_name":  _id_to_name.get(str(card_id), str(card_id)),
+        "confidence": round(score, 3),
     }
