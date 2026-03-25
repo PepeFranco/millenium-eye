@@ -27,7 +27,7 @@ EMB_PATH  = os.path.join(DATA_DIR, "cnn_embeddings.npy")
 IDS_PATH  = os.path.join(DATA_DIR, "cnn_card_ids.npy")
 NAM_PATH  = os.path.join(DATA_DIR, "cnn_card_names.json")
 
-SIMILARITY_THRESHOLD = 0.60   # cosine similarity; tune up if too many false matches
+SIMILARITY_THRESHOLD = 0.75   # cosine similarity; tune up if too many false matches
 
 # ---------------------------------------------------------------------------
 # Index — loaded once at startup
