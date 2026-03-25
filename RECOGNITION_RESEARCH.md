@@ -97,9 +97,10 @@ improving the vote signal especially for cards with complex artwork.
 ## Root Causes and Known Hard Problems
 
 1. **Reference image quality.** All approaches are limited by the 100×145 px
-   YGOPRODECK small thumbnails. Downloading full-size images (420×610 px)
-   would give any method more to work with. A future improvement would be to
-   use `image_url` instead of `image_url_small` in `build_database.py`.
+   YGOPRODECK small thumbnails. Full-size images (421×614 px) are available
+   via `image_url` and have been switched to in `build_database.py`. This
+   gives ORB 17× more pixels to find keypoints in, which should significantly
+   improve descriptor quality. Images stored in `data/images_full/` (~285 MB).
 
 2. **Photo vs. scan mismatch.** Camera images have lighting variation, glare
    (especially on holographic rares), motion blur, and sleeve reflections.

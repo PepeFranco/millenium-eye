@@ -23,7 +23,7 @@ from tqdm import tqdm
 # Paths
 # ---------------------------------------------------------------------------
 DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
-IMAGES_DIR = os.path.join(DATA_DIR, "images")
+IMAGES_DIR = os.path.join(DATA_DIR, "images_full")
 CARDS_JSON = os.path.join(DATA_DIR, "cards.json")
 FAILED_TXT   = os.path.join(DATA_DIR, "failed_downloads.txt")
 ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
@@ -119,7 +119,7 @@ def download_images(cards):
             images_to_fetch.append({
                 "card_id":   img["id"],
                 "card_name": card["name"],
-                "url":       img["image_url_small"],
+                "url":       img["image_url"],
             })
 
     already = sum(
