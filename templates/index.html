@@ -457,8 +457,10 @@
     tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tokenSubmit.click(); });
 
     // ── recent matches dedup (30 s window) ──────────────────────────────────
-    const DEDUP_MS = 30_000;
-    const recentSeen = new Map(); // card_id → timestamp
+    const DEDUP_MS    = 30_000;
+    const STABLE_HITS = 4;       // frames a card must appear before shown
+    const recentSeen  = new Map(); // card_id → timestamp
+    const pendingHits = new Map(); // card_id → consecutive hit count
 
     function isSeen(id) {
       const t = recentSeen.get(id);
@@ -467,6 +469,14 @@
 
     function markSeen(id) {
       recentSeen.set(id, Date.now());
+      pendingHits.delete(id);
+    }
+
+    // Returns true when the card has just become stable (ready to show).
+    function isStable(id) {
+      const count = (pendingHits.get(id) || 0) + 1;
+      pendingHits.set(id, count);
+      return count >= STABLE_HITS;
     }
 
     // ── sidebar ──────────────────────────────────────────────────────────────
@@ -665,11 +675,21 @@
           drawDetections(data.detections, dispScaleX, dispScaleY);
 
           // update sidebar
+          // Collect card IDs seen this frame to reset pending counts for
+          // cards that disappeared.
+          const seenThisFrame = new Set();
           for (const det of data.detections) {
-            if (det.match && !isSeen(det.match.card_id)) {
-              markSeen(det.match.card_id);
+            if (!det.match) continue;
+            const id = det.match.card_id;
+            seenThisFrame.add(id);
+            if (!isSeen(id) && isStable(id)) {
+              markSeen(id);
               addMatchToSidebar(det.match);
             }
+          }
+          // Reset pending count for any card not seen this frame.
+          for (const id of pendingHits.keys()) {
+            if (!seenThisFrame.has(id)) pendingHits.delete(id);
           }
 
           // fps + detection count
