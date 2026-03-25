@@ -1,12 +1,12 @@
 """
-Phase 2 — Build the card embedding database.
+Phase 2 — Build the card hash database.
 
 Steps:
   1. Fetch full card list from YGOPRODECK API → data/cards.json
   2. Download small card images          → data/images/{card_id}.jpg
-  3. Compute CNN embeddings for every image  → data/cnn_embeddings.npy
-                                              data/cnn_card_ids.npy
-                                              data/cnn_card_names.json
+  3. Compute pHash for artwork region        → data/phash_hashes.npy
+                                              data/phash_card_ids.npy
+                                              data/phash_card_names.json
 """
 
 import json
@@ -15,11 +15,10 @@ import random
 import time
 
 import cv2
+import imagehash
 import numpy as np
 import requests
-import torch
-import torchvision.transforms as T
-from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from PIL import Image
 from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
@@ -28,10 +27,16 @@ from tqdm import tqdm
 DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 CARDS_JSON = os.path.join(DATA_DIR, "cards.json")
-FAILED_TXT   = os.path.join(DATA_DIR, "failed_downloads.txt")
-CNN_EMB_PATH = os.path.join(DATA_DIR, "cnn_embeddings.npy")
-CNN_IDS_PATH = os.path.join(DATA_DIR, "cnn_card_ids.npy")
-CNN_NAM_PATH = os.path.join(DATA_DIR, "cnn_card_names.json")
+FAILED_TXT    = os.path.join(DATA_DIR, "failed_downloads.txt")
+PHASH_HSH_PATH = os.path.join(DATA_DIR, "phash_hashes.npy")
+PHASH_IDS_PATH = os.path.join(DATA_DIR, "phash_card_ids.npy")
+PHASH_NAM_PATH = os.path.join(DATA_DIR, "phash_card_names.json")
+
+# Artwork region as fractions of card dimensions (must match recogniser.py)
+ART_TOP    = 0.13
+ART_BOTTOM = 0.57
+ART_LEFT   = 0.07
+ART_RIGHT  = 0.93
 
 TCG_DATE_CUTOFF = "2010-04-26"  # only index cards released on or before this date (None = all cards)
 SLEEP_MIN      = 0.3  # seconds between requests (min)
@@ -160,29 +165,24 @@ def download_images(cards):
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — Compute CNN embeddings and export index
+# Step 3 — Compute pHash index
 # ---------------------------------------------------------------------------
 
-_transform = T.Compose([
-    T.ToTensor(),
-    T.Resize((224, 224), antialias=True),
-    T.Normalize(mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]),
-])
+def _art_crop_pil(img_bgr):
+    h, w = img_bgr.shape[:2]
+    y1 = int(h * ART_TOP);   y2 = int(h * ART_BOTTOM)
+    x1 = int(w * ART_LEFT);  x2 = int(w * ART_RIGHT)
+    return Image.fromarray(cv2.cvtColor(img_bgr[y1:y2, x1:x2], cv2.COLOR_BGR2RGB))
 
 
-def build_cnn_index(images_meta):
-    if os.path.exists(CNN_EMB_PATH):
-        print("[3/3] CNN index already exists, skipping.")
+def build_phash_index(images_meta):
+    if os.path.exists(PHASH_HSH_PATH):
+        print("[3/3] pHash index already exists, skipping.")
         return
 
-    print("[3/3] Computing CNN embeddings (MobileNetV3-Small) …")
-    weights   = MobileNet_V3_Small_Weights.IMAGENET1K_V1
-    m         = mobilenet_v3_small(weights=weights)
-    extractor = torch.nn.Sequential(m.features, m.avgpool, torch.nn.Flatten(1))
-    extractor.eval()
+    print("[3/3] Computing pHashes for artwork regions …")
 
-    all_embs   = []
+    all_hashes = []
     all_ids    = []
     id_to_name = {}
 
@@ -193,27 +193,22 @@ def build_cnn_index(images_meta):
         img = cv2.imread(path)
         if img is None:
             continue
-        rgb    = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        tensor = _transform(rgb).unsqueeze(0)
-        with torch.no_grad():
-            vec = extractor(tensor).squeeze().numpy()  # (576,)
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec = vec / norm
-        all_embs.append(vec)
+        art  = _art_crop_pil(img)
+        h    = imagehash.phash(art, hash_size=8)          # 64-bit hash
+        bits = np.packbits(h.hash.flatten()).astype(np.uint8)  # (8,)
+        all_hashes.append(bits)
         all_ids.append(entry["card_id"])
         id_to_name[entry["card_id"]] = entry["card_name"]
 
-    emb_matrix = np.vstack(all_embs).astype(np.float32)
-    ids_array  = np.array(all_ids, dtype=np.int32)
+    hash_matrix = np.vstack(all_hashes)                   # (N, 8) uint8
+    ids_array   = np.array(all_ids, dtype=np.int32)
 
-    np.save(CNN_EMB_PATH, emb_matrix)
-    np.save(CNN_IDS_PATH, ids_array)
-    with open(CNN_NAM_PATH, "w") as f:
+    np.save(PHASH_HSH_PATH, hash_matrix)
+    np.save(PHASH_IDS_PATH, ids_array)
+    with open(PHASH_NAM_PATH, "w") as f:
         json.dump({str(k): v for k, v in id_to_name.items()}, f)
 
-    print(f"    {emb_matrix.shape[0]:,} embeddings ({emb_matrix.shape[1]}d) "
-          f"for {len(id_to_name):,} cards → {CNN_EMB_PATH}")
+    print(f"    {hash_matrix.shape[0]:,} pHashes for {len(id_to_name):,} cards → {PHASH_HSH_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -230,5 +225,5 @@ if __name__ == "__main__":
         image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
         print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
 
-    build_cnn_index(image_meta)
+    build_phash_index(image_meta)
     print("\nDone. Database is ready.")

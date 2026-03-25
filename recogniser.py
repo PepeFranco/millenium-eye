@@ -1,76 +1,70 @@
 """
-Card recognition engine — MobileNetV3-Small CNN embeddings.
+Card recognition engine — perceptual hashing on the artwork region.
 
-Loads pre-computed 576-dim feature vectors for all cards, then matches
-query card images by cosine similarity (fast numpy dot product).
+Crops the artwork area from each card (top 55%, inset from the border),
+computes a 64-bit pHash, and matches by minimum Hamming distance.
 """
 
 import json
 import os
 from typing import Optional
 
-# Set torch cache dir before importing torch so the model weights land in the
-# project directory instead of $HOME/.cache (which may not be writable).
-os.environ.setdefault(
-    "TORCH_HOME",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".torch"),
-)
-
 import cv2
+import imagehash
 import numpy as np
-import torch
-import torchvision.transforms as T
-from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from PIL import Image
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-EMB_PATH  = os.path.join(DATA_DIR, "cnn_embeddings.npy")
-IDS_PATH  = os.path.join(DATA_DIR, "cnn_card_ids.npy")
-NAM_PATH  = os.path.join(DATA_DIR, "cnn_card_names.json")
+EMB_PATH  = os.path.join(DATA_DIR, "cnn_embeddings.npy")   # kept for compat check
+IDS_PATH  = os.path.join(DATA_DIR, "phash_card_ids.npy")
+NAM_PATH  = os.path.join(DATA_DIR, "phash_card_names.json")
+HSH_PATH  = os.path.join(DATA_DIR, "phash_hashes.npy")
 
-SIMILARITY_THRESHOLD = 0.72   # cosine similarity; tune up if too many false matches
+# Artwork region as fractions of card dimensions (200×290 px warped output)
+ART_TOP    = 0.13
+ART_BOTTOM = 0.57
+ART_LEFT   = 0.07
+ART_RIGHT  = 0.93
+
+HAMMING_THRESHOLD = 15   # out of 64 bits; lower = stricter
 
 # ---------------------------------------------------------------------------
 # Index — loaded once at startup
 # ---------------------------------------------------------------------------
 
-_extractor  = None
-_embeddings = None   # (N, 576) float32, L2-normalised rows
+_hashes     = None   # (N, 8) uint8 — 64-bit pHash packed into bytes
 _card_ids   = None   # (N,) int32
 _id_to_name = None   # str(card_id) → card_name
 
-_transform = T.Compose([
-    T.ToTensor(),
-    T.Resize((224, 224), antialias=True),
-    T.Normalize(mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]),
-])
+
+def _art_crop(bgr):
+    """Return PIL Image of the artwork region of a 200×290 card image."""
+    h, w = bgr.shape[:2]
+    y1 = int(h * ART_TOP);    y2 = int(h * ART_BOTTOM)
+    x1 = int(w * ART_LEFT);   x2 = int(w * ART_RIGHT)
+    return Image.fromarray(cv2.cvtColor(bgr[y1:y2, x1:x2], cv2.COLOR_BGR2RGB))
 
 
-def _build_extractor():
-    weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
-    m = mobilenet_v3_small(weights=weights)
-    extractor = torch.nn.Sequential(m.features, m.avgpool, torch.nn.Flatten(1))
-    extractor.eval()
-    return extractor
+def _phash_bits(pil_img) -> np.ndarray:
+    """Return a 64-bit pHash as an (8,) uint8 array."""
+    h = imagehash.phash(pil_img, hash_size=8)  # 8×8 = 64 bits
+    return np.packbits(h.hash.flatten())        # (8,) uint8
 
 
 def load_index():
-    global _extractor, _embeddings, _card_ids, _id_to_name
+    global _hashes, _card_ids, _id_to_name
 
-    print("[recogniser] Loading MobileNetV3-Small …", flush=True)
-    _extractor = _build_extractor()
-
-    _embeddings = np.load(EMB_PATH)   # (N, 576) float32
-    _card_ids   = np.load(IDS_PATH)   # (N,) int32
+    print("[recogniser] Loading pHash index …", flush=True)
+    _hashes   = np.load(HSH_PATH)   # (N, 8) uint8
+    _card_ids = np.load(IDS_PATH)   # (N,) int32
 
     with open(NAM_PATH) as f:
-        _id_to_name = json.load(f)    # str(id) → name
+        _id_to_name = json.load(f)
 
-    print(f"[recogniser] Ready — {len(_card_ids):,} card embeddings loaded.", flush=True)
+    print(f"[recogniser] Ready — {len(_card_ids):,} card hashes loaded.", flush=True)
 
 
-def get_valid_card_names() -> list[str]:
-    """Return a sorted, deduplicated list of all card names in the index."""
+def get_valid_card_names() -> list:
     if _id_to_name is None:
         return []
     return sorted(set(_id_to_name.values()))
@@ -80,40 +74,41 @@ def get_valid_card_names() -> list[str]:
 # Recognition
 # ---------------------------------------------------------------------------
 
-def _embed(card_bgr: np.ndarray) -> np.ndarray:
-    """Return an L2-normalised 576-dim embedding for a BGR card image."""
-    rgb    = cv2.cvtColor(card_bgr, cv2.COLOR_BGR2RGB)
-    tensor = _transform(rgb).unsqueeze(0)          # (1, 3, 224, 224)
-    with torch.no_grad():
-        vec = _extractor(tensor).squeeze().numpy() # (576,)
-    norm = np.linalg.norm(vec)
-    return vec / norm if norm > 0 else vec
+def _hamming_distances(query_bits: np.ndarray) -> np.ndarray:
+    """Vectorised Hamming distance between query and all index hashes."""
+    xor = _hashes ^ query_bits          # (N, 8) uint8
+    # popcount each byte via lookup table
+    bits = np.unpackbits(xor, axis=1)   # (N, 64) uint8 (0/1)
+    return bits.sum(axis=1)             # (N,) int
 
 
 def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
     """
-    Match a BGR card image against the embedding index.
+    Match a BGR card image against the pHash index.
 
     Returns a dict on confident match, None otherwise:
         {
             "card_id":    int,
             "card_name":  str,
-            "confidence": float  (0–1)
+            "confidence": float  (0–1, higher = better)
         }
     """
-    emb   = _embed(card_image_bgr)
-    sims  = _embeddings @ emb          # cosine similarity, shape (N,)
-    idx   = int(np.argmax(sims))
-    score = float(sims[idx])
+    art   = _art_crop(card_image_bgr)
+    bits  = _phash_bits(art)
+    dists = _hamming_distances(bits)
+    idx   = int(np.argmin(dists))
+    dist  = int(dists[idx])
 
     card_id = int(_card_ids[idx])
     name    = _id_to_name.get(str(card_id), str(card_id))
-    print(f"[recognise] best={score:.3f} ({name})", flush=True)
+    print(f"[recognise] best dist={dist} ({name})", flush=True)
 
-    if score < SIMILARITY_THRESHOLD:
+    if dist > HAMMING_THRESHOLD:
         return None
+
+    confidence = round(1.0 - dist / 64, 3)
     return {
         "card_id":    card_id,
-        "card_name":  _id_to_name.get(str(card_id), str(card_id)),
-        "confidence": round(score, 3),
+        "card_name":  name,
+        "confidence": confidence,
     }
