@@ -27,7 +27,7 @@ EMB_PATH  = os.path.join(DATA_DIR, "cnn_embeddings.npy")
 IDS_PATH  = os.path.join(DATA_DIR, "cnn_card_ids.npy")
 NAM_PATH  = os.path.join(DATA_DIR, "cnn_card_names.json")
 
-SIMILARITY_THRESHOLD = 0.82   # cosine similarity; tune up if too many false matches
+SIMILARITY_THRESHOLD = 0.72   # cosine similarity; tune up if too many false matches
 
 # ---------------------------------------------------------------------------
 # Index — loaded once at startup
@@ -106,10 +106,12 @@ def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
     idx   = int(np.argmax(sims))
     score = float(sims[idx])
 
+    card_id = int(_card_ids[idx])
+    name    = _id_to_name.get(str(card_id), str(card_id))
+    print(f"[recognise] best={score:.3f} ({name})", flush=True)
+
     if score < SIMILARITY_THRESHOLD:
         return None
-
-    card_id = int(_card_ids[idx])
     return {
         "card_id":    card_id,
         "card_name":  _id_to_name.get(str(card_id), str(card_id)),
