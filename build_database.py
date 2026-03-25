@@ -1,12 +1,12 @@
 """
-Phase 2 — Build the card hash database.
+Phase 2 — Build the card ORB database.
 
 Steps:
   1. Fetch full card list from YGOPRODECK API → data/cards.json
   2. Download small card images          → data/images/{card_id}.jpg
-  3. Compute pHash for artwork region        → data/phash_hashes.npy
-                                              data/phash_card_ids.npy
-                                              data/phash_card_names.json
+  3. Compute ORB descriptors for every image → data/orb_descriptors.npy
+                                              data/orb_card_ids.npy
+                                              data/orb_card_names.json
 """
 
 import json
@@ -15,10 +15,8 @@ import random
 import time
 
 import cv2
-import imagehash
 import numpy as np
 import requests
-from PIL import Image
 from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
@@ -27,16 +25,12 @@ from tqdm import tqdm
 DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 CARDS_JSON = os.path.join(DATA_DIR, "cards.json")
-FAILED_TXT    = os.path.join(DATA_DIR, "failed_downloads.txt")
-PHASH_HSH_PATH = os.path.join(DATA_DIR, "phash_hashes.npy")
-PHASH_IDS_PATH = os.path.join(DATA_DIR, "phash_card_ids.npy")
-PHASH_NAM_PATH = os.path.join(DATA_DIR, "phash_card_names.json")
+FAILED_TXT   = os.path.join(DATA_DIR, "failed_downloads.txt")
+ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
+ORB_IDS_PATH = os.path.join(DATA_DIR, "orb_card_ids.npy")
+ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 
-# Artwork region as fractions of card dimensions (must match recogniser.py)
-ART_TOP    = 0.13
-ART_BOTTOM = 0.57
-ART_LEFT   = 0.07
-ART_RIGHT  = 0.93
+ORB_FEATURES = 500   # must match recogniser.py
 
 TCG_DATE_CUTOFF = "2010-04-26"  # only index cards released on or before this date (None = all cards)
 SLEEP_MIN      = 0.3  # seconds between requests (min)
@@ -165,24 +159,19 @@ def download_images(cards):
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — Compute pHash index
+# Step 3 — Compute ORB descriptors and export index
 # ---------------------------------------------------------------------------
 
-def _art_crop_pil(img_bgr):
-    h, w = img_bgr.shape[:2]
-    y1 = int(h * ART_TOP);   y2 = int(h * ART_BOTTOM)
-    x1 = int(w * ART_LEFT);  x2 = int(w * ART_RIGHT)
-    return Image.fromarray(cv2.cvtColor(img_bgr[y1:y2, x1:x2], cv2.COLOR_BGR2RGB))
-
-
-def build_phash_index(images_meta):
-    if os.path.exists(PHASH_HSH_PATH):
-        print("[3/3] pHash index already exists, skipping.")
+def build_orb_index(images_meta):
+    if os.path.exists(ORB_DES_PATH):
+        print("[3/3] ORB index already exists, skipping.")
         return
 
-    print("[3/3] Computing pHashes for artwork regions …")
+    print("[3/3] Computing ORB descriptors …")
+    orb   = cv2.ORB_create(nfeatures=ORB_FEATURES)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-    all_hashes = []
+    all_des    = []
     all_ids    = []
     id_to_name = {}
 
@@ -193,22 +182,24 @@ def build_phash_index(images_meta):
         img = cv2.imread(path)
         if img is None:
             continue
-        art  = _art_crop_pil(img)
-        h    = imagehash.phash(art, hash_size=8)          # 64-bit hash
-        bits = np.packbits(h.hash.flatten()).astype(np.uint8)  # (8,)
-        all_hashes.append(bits)
-        all_ids.append(entry["card_id"])
+        gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        enhanced = clahe.apply(gray)
+        _, des   = orb.detectAndCompute(enhanced, None)
+        if des is None:
+            continue
+        all_des.append(des)
+        all_ids.extend([entry["card_id"]] * len(des))
         id_to_name[entry["card_id"]] = entry["card_name"]
 
-    hash_matrix = np.vstack(all_hashes)                   # (N, 8) uint8
-    ids_array   = np.array(all_ids, dtype=np.int32)
+    des_matrix = np.vstack(all_des).astype(np.uint8)
+    ids_array  = np.array(all_ids, dtype=np.int32)
 
-    np.save(PHASH_HSH_PATH, hash_matrix)
-    np.save(PHASH_IDS_PATH, ids_array)
-    with open(PHASH_NAM_PATH, "w") as f:
+    np.save(ORB_DES_PATH, des_matrix)
+    np.save(ORB_IDS_PATH, ids_array)
+    with open(ORB_NAM_PATH, "w") as f:
         json.dump({str(k): v for k, v in id_to_name.items()}, f)
 
-    print(f"    {hash_matrix.shape[0]:,} pHashes for {len(id_to_name):,} cards → {PHASH_HSH_PATH}")
+    print(f"    {des_matrix.shape[0]:,} descriptors for {len(id_to_name):,} cards → {ORB_DES_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -225,5 +216,5 @@ if __name__ == "__main__":
         image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
         print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
 
-    build_phash_index(image_meta)
+    build_orb_index(image_meta)
     print("\nDone. Database is ready.")
