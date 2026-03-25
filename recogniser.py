@@ -9,6 +9,13 @@ import json
 import os
 from typing import Optional
 
+# Set torch cache dir before importing torch so the model weights land in the
+# project directory instead of $HOME/.cache (which may not be writable).
+os.environ.setdefault(
+    "TORCH_HOME",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".torch"),
+)
+
 import cv2
 import numpy as np
 import torch
