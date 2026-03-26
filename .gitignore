@@ -3,6 +3,13 @@
 
 # Downloaded card images (large, re-downloadable)
 data/images/
+data/images_full/
+
+# Synthetic training data (large, regeneratable)
+data/synthetic/
+
+# Training artefacts (large, not needed on server)
+data/finetuned_mobilenet.pth
 
 # ORB descriptor index (large, regeneratable)
 data/orb_descriptors.npy

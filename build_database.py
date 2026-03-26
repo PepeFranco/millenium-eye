@@ -19,6 +19,12 @@ import numpy as np
 import requests
 from tqdm import tqdm
 
+CNN_EMB_PATH  = os.path.join("data", "cnn_embeddings.npy")
+CNN_IDS_PATH  = os.path.join("data", "cnn_card_ids.npy")
+CNN_NAM_PATH  = os.path.join("data", "cnn_card_names.json")
+ONNX_PATH     = os.path.join("data", "card_embeddings.onnx")
+CLASS_MAP_PATH = os.path.join("data", "class_to_card_id.json")
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -203,6 +209,60 @@ def build_orb_index(images_meta):
 
 
 # ---------------------------------------------------------------------------
+# Step 3b — Build CNN embedding index from fine-tuned ONNX model
+# ---------------------------------------------------------------------------
+
+def build_cnn_index(images_meta):
+    if os.path.exists(CNN_EMB_PATH):
+        print("[3/3] CNN index already exists, skipping.")
+        return
+
+    import onnxruntime as ort
+    from torchvision import transforms
+    from PIL import Image as PILImage
+
+    print("[3/3] Building CNN embedding index from fine-tuned model …")
+    sess = ort.InferenceSession(ONNX_PATH, providers=["CPUExecutionProvider"])
+
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+
+    all_embs   = []
+    all_ids    = []
+    id_to_name = {}
+
+    for entry in tqdm(images_meta, unit="card"):
+        path = os.path.join(IMAGES_DIR, f"{entry['card_id']}.jpg")
+        if not os.path.exists(path):
+            continue
+        img = cv2.imread(path)
+        if img is None:
+            continue
+        pil  = PILImage.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        t    = transform(pil).unsqueeze(0).numpy()
+        emb  = sess.run(["embedding"], {"image": t})[0].squeeze()
+        norm = np.linalg.norm(emb)
+        if norm > 0:
+            emb = emb / norm
+        all_embs.append(emb)
+        all_ids.append(entry["card_id"])
+        id_to_name[entry["card_id"]] = entry["card_name"]
+
+    emb_matrix = np.vstack(all_embs).astype(np.float32)
+    ids_array  = np.array(all_ids, dtype=np.int32)
+
+    np.save(CNN_EMB_PATH, emb_matrix)
+    np.save(CNN_IDS_PATH, ids_array)
+    with open(CNN_NAM_PATH, "w") as f:
+        json.dump({str(k): v for k, v in id_to_name.items()}, f)
+
+    print(f"    {emb_matrix.shape[0]:,} embeddings ({emb_matrix.shape[1]}d) → {CNN_EMB_PATH}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -216,5 +276,8 @@ if __name__ == "__main__":
         image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
         print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
 
-    build_orb_index(image_meta)
+    if os.path.exists(ONNX_PATH):
+        build_cnn_index(image_meta)
+    else:
+        build_orb_index(image_meta)
     print("\nDone. Database is ready.")
