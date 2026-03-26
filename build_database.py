@@ -38,52 +38,37 @@ ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 
 ORB_FEATURES = 500   # must match recogniser.py
 
-TCG_DATE_CUTOFF = "2010-04-26"  # only index cards released on or before this date (None = all cards)
 SLEEP_MIN      = 0.3  # seconds between requests (min)
 SLEEP_MAX      = 0.6  # seconds between requests (max) — jitter avoids pattern detection
 BATCH_PAUSE_S  = 5.0  # longer pause every N requests
 BATCH_SIZE     = 100  # how many requests between long pauses
 
-# ---------------------------------------------------------------------------
-# Step 1a — Fetch allowed card names (filtered by TCG release date)
-# ---------------------------------------------------------------------------
+EDISON_JSON = os.path.join(DATA_DIR, "edison_cards.json")
 
-SETS_JSON = os.path.join(DATA_DIR, "sets.json")
+# ---------------------------------------------------------------------------
+# Step 1a — Fetch Edison-legal card names directly from YGOPRODECK
+# ---------------------------------------------------------------------------
 
 def fetch_allowed_card_names():
-    """Return a set of card names whose sets were released on or before TCG_DATE_CUTOFF.
-    Returns None if no cutoff is configured (include everything)."""
-    if not TCG_DATE_CUTOFF:
-        return None
-
-    if os.path.exists(SETS_JSON):
-        print(f"[1/4] sets.json already exists, skipping fetch.")
-        with open(SETS_JSON) as f:
-            all_sets = json.load(f)
+    """Return a set of card names legal in Edison format via the YGOPRODECK API."""
+    if os.path.exists(EDISON_JSON):
+        print("[1/4] edison_cards.json already exists, skipping fetch.")
+        with open(EDISON_JSON) as f:
+            cards = json.load(f)
     else:
-        print("[1/4] Fetching set list from YGOPRODECK …")
-        resp = requests.get("https://db.ygoprodeck.com/api/v7/cardsets.php", timeout=30)
+        print("[1/4] Fetching Edison format card list from YGOPRODECK …")
+        resp = requests.get(
+            "https://db.ygoprodeck.com/api/v7/cardinfo.php?format=Edison",
+            timeout=30,
+        )
         resp.raise_for_status()
-        all_sets = resp.json()
+        cards = resp.json()["data"]
         os.makedirs(DATA_DIR, exist_ok=True)
-        with open(SETS_JSON, "w") as f:
-            json.dump(all_sets, f)
+        with open(EDISON_JSON, "w") as f:
+            json.dump(cards, f)
 
-    allowed_set_names = {
-        s["set_name"] for s in all_sets
-        if s.get("tcg_date") and s["tcg_date"] <= TCG_DATE_CUTOFF
-    }
-    print(f"    {len(allowed_set_names)} sets released on or before {TCG_DATE_CUTOFF}")
-
-    # Load cards.json to find which card names appear in those sets
-    with open(CARDS_JSON) as f:
-        cards = json.load(f)
-
-    allowed_names = {
-        card["name"] for card in cards
-        if any(cs["set_name"] in allowed_set_names for cs in card.get("card_sets", []))
-    }
-    print(f"    {len(allowed_names):,} cards within cutoff")
+    allowed_names = {card["name"] for card in cards}
+    print(f"    {len(allowed_names):,} Edison-legal cards")
     return allowed_names
 
 
@@ -269,12 +254,14 @@ def build_cnn_index(images_meta):
 if __name__ == "__main__":
     allowed_names = fetch_allowed_card_names()
     cards         = fetch_card_list()
-    image_meta    = download_images(cards)
 
+    # Filter cards before downloading so we only fetch Edison-legal images
     if allowed_names is not None:
-        before = len(image_meta)
-        image_meta = [e for e in image_meta if e["card_name"] in allowed_names]
-        print(f"[filter] {before:,} → {len(image_meta):,} images after date filter ({TCG_DATE_CUTOFF})")
+        before = len(cards)
+        cards  = [c for c in cards if c["name"] in allowed_names]
+        print(f"[filter] {before:,} → {len(cards):,} cards before download (Edison filter)")
+
+    image_meta = download_images(cards)
 
     if os.path.exists(ONNX_PATH):
         build_cnn_index(image_meta)
