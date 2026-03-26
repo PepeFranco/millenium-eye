@@ -49,17 +49,23 @@ git push
 
 ## On the server
 
-### 6. Pull latest code and clean up non-Edison images
+### 6. Pull and rebuild the ORB index with correct Edison cards
 
 ```bash
 ssh millenium-eye
 cd /opt/millenium-eye
 git pull
+rm -f data/orb_descriptors.npy data/orb_card_ids.npy data/orb_card_names.json
+.venv/bin/python3 build_database.py
 ```
 
-Remove non-Edison images from images_full (edison_cards.json will be
-fetched automatically if not present — run build_database.py first to
-generate it, then re-run the cleanup):
+This fetches edison_cards.json from YGOPRODECK and rebuilds the index
+with only the 3,689 correct Edison cards. Image download is skipped
+since images_full/ is already populated.
+
+### 7. Remove non-Edison images from images_full
+
+Now that edison_cards.json exists on the server, run the cleanup:
 
 ```bash
 .venv/bin/python3 -c "
@@ -76,14 +82,24 @@ print(f'Deleted {removed} images, {len(allowed)} remaining')
 "
 ```
 
-### 7. Rebuild the index and restart
+### 8. Restart the service
 
 ```bash
-rm -f data/orb_descriptors.npy data/orb_card_ids.npy data/orb_card_names.json
+systemctl restart millenium-eye
+```
+
+The server now runs ORB with the correct Edison card set while the CNN
+training happens on your Mac.
+
+### 9. After Mac training is complete and ONNX committed
+
+```bash
+git pull
 .venv/bin/pip install onnxruntime
+rm -f data/cnn_embeddings.npy data/cnn_card_ids.npy data/cnn_card_names.json
 .venv/bin/python3 build_database.py
 systemctl restart millenium-eye
 ```
 
-build_database.py will automatically use the CNN index (from the committed
-ONNX file) instead of ORB now that data/card_embeddings.onnx exists.
+build_database.py will detect data/card_embeddings.onnx and build the
+CNN index instead of ORB.
