@@ -658,8 +658,7 @@
             statusText.textContent = 'Session expired — re-enter token';
             return;
           }
-          if (res.status === 429) { requestAnimationFrame(captureAndSend); return; }
-          if (!res.ok) return;
+          if (!res.ok) { requestAnimationFrame(captureAndSend); return; }
 
           const data = await res.json();
 

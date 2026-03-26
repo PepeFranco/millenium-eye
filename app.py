@@ -73,6 +73,8 @@ def recognize():
     t0 = time.perf_counter()
 
     data = request.get_data()
+    if not data:
+        return jsonify({"error": "empty body"}), 400
     arr = np.frombuffer(data, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
