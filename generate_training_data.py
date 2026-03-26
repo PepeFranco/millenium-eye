@@ -78,9 +78,16 @@ def augment(img_bgr):
 
 
 def main():
-    image_files = [f for f in os.listdir(IMAGES_DIR) if f.endswith(".jpg")]
-    print(f"Found {len(image_files):,} card images. Generating {N_AUGMENTS} variants each …")
-    print(f"Total output: {len(image_files) * N_AUGMENTS:,} images → {SYNTHETIC_DIR}/")
+    # Only train on Edison-legal cards (filtered by TCG date in build_database.py)
+    import json
+    with open(os.path.join("data", "orb_card_names.json")) as f:
+        allowed_ids = set(json.load(f).keys())  # str card_ids
+
+    all_files   = [f for f in os.listdir(IMAGES_DIR) if f.endswith(".jpg")]
+    image_files = [f for f in all_files if f.replace(".jpg", "") in allowed_ids]
+    print(f"Total images: {len(all_files):,}  →  Edison-legal: {len(image_files):,}")
+    print(f"Generating {N_AUGMENTS} variants each → {len(image_files) * N_AUGMENTS:,} total")
+    print(f"Output: {SYNTHETIC_DIR}/")
 
     os.makedirs(SYNTHETIC_DIR, exist_ok=True)
     skipped = 0
