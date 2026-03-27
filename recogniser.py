@@ -15,11 +15,10 @@ import numpy as np
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 # CNN paths
-ONNX_PATH      = os.path.join(DATA_DIR, "card_embeddings.onnx")
-CNN_EMB_PATH   = os.path.join(DATA_DIR, "cnn_embeddings.npy")
-CNN_IDS_PATH   = os.path.join(DATA_DIR, "cnn_card_ids.npy")
-CNN_NAM_PATH   = os.path.join(DATA_DIR, "cnn_card_names.json")
-CLASS_MAP_PATH = os.path.join(DATA_DIR, "class_to_card_id.json")
+ONNX_PATH    = os.path.join(DATA_DIR, "card_embeddings.onnx")
+CNN_EMB_PATH = os.path.join(DATA_DIR, "cnn_embeddings.npy")
+CNN_IDS_PATH = os.path.join(DATA_DIR, "cnn_card_ids.npy")
+CNN_NAM_PATH = os.path.join(DATA_DIR, "cnn_card_names.json")
 
 # ORB paths
 ORB_DES_PATH = os.path.join(DATA_DIR, "orb_descriptors.npy")
@@ -29,7 +28,7 @@ ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 ORB_FEATURES     = 500
 RATIO_THRESH     = 0.75
 MIN_GOOD_MATCHES = 8
-CNN_THRESHOLD    = 0.5   # minimum softmax probability to accept a match
+CNN_THRESHOLD    = 0.62  # cosine similarity threshold for embedding matches
 
 # ---------------------------------------------------------------------------
 # Shared state
@@ -39,9 +38,10 @@ _mode       = None   # "cnn" or "orb"
 _id_to_name = None
 
 # CNN
-_sess          = None
-_class_to_card = None   # int class index → int card_id
-_transform     = None
+_sess       = None
+_embeddings = None
+_card_ids   = None
+_transform  = None
 
 # ORB
 _orb        = None
@@ -53,31 +53,24 @@ _clahe      = None
 def load_index():
     global _mode, _id_to_name
 
-    if os.path.exists(ONNX_PATH) and os.path.exists(CLASS_MAP_PATH):
+    if os.path.exists(ONNX_PATH) and os.path.exists(CNN_EMB_PATH):
         _load_cnn()
     else:
         _load_orb()
 
 
 def _load_cnn():
-    global _mode, _sess, _class_to_card, _id_to_name, _transform
+    global _mode, _sess, _embeddings, _card_ids, _id_to_name, _transform
     import onnxruntime as ort
     from torchvision import transforms
 
     print("[recogniser] Loading fine-tuned CNN (ONNX) …", flush=True)
-    _sess = ort.InferenceSession(ONNX_PATH, providers=["CPUExecutionProvider"])
+    _sess       = ort.InferenceSession(ONNX_PATH, providers=["CPUExecutionProvider"])
+    _embeddings = np.load(CNN_EMB_PATH)
+    _card_ids   = np.load(CNN_IDS_PATH)
 
-    # class index (int) → card_id (int)
-    with open(CLASS_MAP_PATH) as f:
-        raw = json.load(f)
-    _class_to_card = {int(k): int(v) for k, v in raw.items()}
-
-    # card_id (str) → card name — use cnn_card_names if available, else build stub
-    if os.path.exists(CNN_NAM_PATH):
-        with open(CNN_NAM_PATH) as f:
-            _id_to_name = json.load(f)
-    else:
-        _id_to_name = {str(v): str(v) for v in _class_to_card.values()}
+    with open(CNN_NAM_PATH) as f:
+        _id_to_name = json.load(f)
 
     _transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -86,7 +79,7 @@ def _load_cnn():
     ])
 
     _mode = "cnn"
-    print(f"[recogniser] CNN ready — {len(_class_to_card):,} classes.", flush=True)
+    print(f"[recogniser] CNN ready — {len(_card_ids):,} card embeddings.", flush=True)
 
 
 def _load_orb():
@@ -134,16 +127,20 @@ def recognise_card(card_image_bgr: np.ndarray) -> Optional[dict]:
 def _recognise_cnn(card_bgr: np.ndarray) -> Optional[dict]:
     from PIL import Image as PILImage
 
-    pil   = PILImage.fromarray(cv2.cvtColor(card_bgr, cv2.COLOR_BGR2RGB))
-    t     = _transform(pil).unsqueeze(0).numpy()
-    probs = _sess.run(["probs"], {"image": t})[0].squeeze()
+    pil  = PILImage.fromarray(cv2.cvtColor(card_bgr, cv2.COLOR_BGR2RGB))
+    t    = _transform(pil).unsqueeze(0).numpy()
+    emb  = _sess.run(["embedding"], {"image": t})[0].squeeze()
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb = emb / norm
 
-    idx   = int(np.argmax(probs))
-    score = float(probs[idx])
+    sims  = _embeddings @ emb
+    idx   = int(np.argmax(sims))
+    score = float(sims[idx])
 
-    card_id = _class_to_card.get(idx, idx)
+    card_id = int(_card_ids[idx])
     name    = _id_to_name.get(str(card_id), str(card_id))
-    print(f"[recognise] cnn prob={score:.4f} ({name})", flush=True)
+    print(f"[recognise] cnn score={score:.3f} ({name})", flush=True)
 
     if score < CNN_THRESHOLD:
         return None
