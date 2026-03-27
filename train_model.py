@@ -21,13 +21,13 @@ from torchvision import datasets, transforms
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 from tqdm import tqdm
 
-SYNTHETIC_DIR = os.path.join("data", "synthetic")
-WEIGHTS_PATH  = os.path.join("data", "finetuned_mobilenet.pth")
+SYNTHETIC_DIR  = os.path.join("data", "synthetic")
+WEIGHTS_PATH   = os.path.join("data", "finetuned_mobilenet.pth")
 CLASS_MAP_PATH = os.path.join("data", "class_to_card_id.json")
 
-EPOCHS     = 15
-BATCH_SIZE = 64
-LR         = 3e-4
+EPOCHS      = 15
+BATCH_SIZE  = 64
+LR          = 3e-4
 NUM_WORKERS = 4
 
 # ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ else:
     print("Using CPU (this will be slow)")
 
 # ---------------------------------------------------------------------------
-# Dataset
+# Dataset transform (defined at module level — safe for multiprocessing)
 # ---------------------------------------------------------------------------
 
 train_transform = transforms.Compose([
@@ -56,71 +56,72 @@ train_transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
 
-dataset    = datasets.ImageFolder(SYNTHETIC_DIR, transform=train_transform)
-dataloader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=NUM_WORKERS,
-    pin_memory=False,
-)
+if __name__ == "__main__":
+    dataset    = datasets.ImageFolder(SYNTHETIC_DIR, transform=train_transform)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=False,
+    )
 
-n_classes = len(dataset.classes)
-print(f"Classes (cards): {n_classes:,}  |  Training images: {len(dataset):,}")
+    n_classes = len(dataset.classes)
+    print(f"Classes (cards): {n_classes:,}  |  Training images: {len(dataset):,}")
 
-# Save class→card_id mapping (ImageFolder sorts dirs alphabetically)
-class_to_card_id = {i: int(cls) for i, cls in enumerate(dataset.classes)}
-with open(CLASS_MAP_PATH, "w") as f:
-    json.dump(class_to_card_id, f)
-print(f"Class map saved → {CLASS_MAP_PATH}")
+    # Save class→card_id mapping (ImageFolder sorts dirs alphabetically)
+    class_to_card_id = {i: int(cls) for i, cls in enumerate(dataset.classes)}
+    with open(CLASS_MAP_PATH, "w") as f:
+        json.dump(class_to_card_id, f)
+    print(f"Class map saved → {CLASS_MAP_PATH}")
 
-# ---------------------------------------------------------------------------
-# Model — pretrained MobileNetV3-Small, replace head for n_classes
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Model — pretrained MobileNetV3-Small, replace head for n_classes
+    # ---------------------------------------------------------------------------
 
-weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
-model   = mobilenet_v3_small(weights=weights)
-model.classifier[3] = nn.Linear(1024, n_classes)
-model = model.to(DEVICE)
+    weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+    model   = mobilenet_v3_small(weights=weights)
+    model.classifier[3] = nn.Linear(1024, n_classes)
+    model = model.to(DEVICE)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    optimizer, max_lr=LR, steps_per_epoch=len(dataloader), epochs=EPOCHS
-)
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=LR, steps_per_epoch=len(dataloader), epochs=EPOCHS
+    )
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Training loop
+    # ---------------------------------------------------------------------------
 
-best_acc = 0.0
+    best_acc = 0.0
 
-for epoch in range(1, EPOCHS + 1):
-    model.train()
-    total_loss = 0.0
-    correct    = 0
-    total      = 0
+    for epoch in range(1, EPOCHS + 1):
+        model.train()
+        total_loss = 0.0
+        correct    = 0
+        total      = 0
 
-    for imgs, labels in tqdm(dataloader, desc=f"Epoch {epoch}/{EPOCHS}", leave=False):
-        imgs, labels = imgs.to(DEVICE), labels.to(DEVICE)
-        optimizer.zero_grad()
-        out  = model(imgs)
-        loss = criterion(out, labels)
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
+        for imgs, labels in tqdm(dataloader, desc=f"Epoch {epoch}/{EPOCHS}", leave=False):
+            imgs, labels = imgs.to(DEVICE), labels.to(DEVICE)
+            optimizer.zero_grad()
+            out  = model(imgs)
+            loss = criterion(out, labels)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
 
-        total_loss += loss.item()
-        correct    += (out.argmax(1) == labels).sum().item()
-        total      += labels.size(0)
+            total_loss += loss.item()
+            correct    += (out.argmax(1) == labels).sum().item()
+            total      += labels.size(0)
 
-    acc = correct / total
-    print(f"Epoch {epoch:>2}/{EPOCHS}  loss={total_loss/len(dataloader):.4f}  acc={acc:.3f}")
+        acc = correct / total
+        print(f"Epoch {epoch:>2}/{EPOCHS}  loss={total_loss/len(dataloader):.4f}  acc={acc:.3f}")
 
-    if acc > best_acc:
-        best_acc = acc
-        torch.save(model.state_dict(), WEIGHTS_PATH)
-        print(f"  ✓ saved (best so far: {best_acc:.3f})")
+        if acc > best_acc:
+            best_acc = acc
+            torch.save(model.state_dict(), WEIGHTS_PATH)
+            print(f"  ✓ saved (best so far: {best_acc:.3f})")
 
-print(f"\nTraining complete. Best acc={best_acc:.3f}")
-print(f"Weights saved → {WEIGHTS_PATH}")
+    print(f"\nTraining complete. Best acc={best_acc:.3f}")
+    print(f"Weights saved → {WEIGHTS_PATH}")
