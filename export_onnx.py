@@ -1,13 +1,16 @@
 """
 Step 3 — Export the fine-tuned model to ONNX for CPU inference on the server.
 
-Strips the classifier head and exports only the embedding extractor
-(features + avgpool + flatten → 576-dim vector).
+Exports the full classifier (features + classifier head + softmax) so the
+server can use softmax probabilities directly as confidence scores.
+
+Output names:
+  "probs"  — softmax probabilities, shape (1, n_classes)
 
 Usage:
     .venv/bin/python3 export_onnx.py
 
-Output: data/card_embeddings.onnx  (~10 MB, commit this to the repo)
+Output: data/card_embeddings.onnx  (commit this to the repo)
 """
 
 import json
@@ -34,19 +37,19 @@ model.classifier[3] = nn.Linear(1024, n_classes)
 model.load_state_dict(torch.load(WEIGHTS_PATH, map_location="cpu"))
 model.eval()
 
-# Export only the embedding extractor (no classifier head)
-extractor = nn.Sequential(model.features, model.avgpool, nn.Flatten(1))
-extractor.eval()
+# Wrap with softmax so output is probabilities
+classifier = nn.Sequential(model, nn.Softmax(dim=1))
+classifier.eval()
 
 dummy = torch.zeros(1, 3, 224, 224)
 torch.onnx.export(
-    extractor,
+    classifier,
     dummy,
     ONNX_PATH,
     input_names=["image"],
-    output_names=["embedding"],
-    dynamic_axes={"image": {0: "batch"}, "embedding": {0: "batch"}},
+    output_names=["probs"],
+    dynamic_axes={"image": {0: "batch"}, "probs": {0: "batch"}},
     opset_version=17,
 )
 print(f"Exported → {ONNX_PATH}  ({os.path.getsize(ONNX_PATH) / 1e6:.1f} MB)")
-print("Next: run build_database.py to build the embedding index, then commit the ONNX file.")
+print("Next: run build_database.py to build the index, then commit the ONNX file.")
