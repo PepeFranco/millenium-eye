@@ -25,7 +25,7 @@ SYNTHETIC_DIR  = os.path.join("data", "synthetic")
 WEIGHTS_PATH   = os.path.join("data", "finetuned_mobilenet.pth")
 CLASS_MAP_PATH = os.path.join("data", "class_to_card_id.json")
 
-EPOCHS      = 15
+EPOCHS      = 6
 BATCH_SIZE  = 64
 LR          = 3e-4
 NUM_WORKERS = 4
