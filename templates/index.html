@@ -271,11 +271,14 @@
       background: rgba(0,0,0,0.5);
     }
     #detected-list .detected-item:first-child .item-dismiss {
-      color: rgba(0,0,0,0.35);
+      background: rgba(0,0,0,0.15);
+      border-color: rgba(0,0,0,0.3);
+      color: rgba(0,0,0,0.5);
     }
     #detected-list .detected-item:first-child .item-dismiss:hover {
-      color: #0d0d0d;
-      background: rgba(0,0,0,0.15);
+      background: #c0392b;
+      border-color: #c0392b;
+      color: #fff;
     }
 
     #no-matches {
@@ -353,17 +356,18 @@
 
     /* ── Dismiss (×) button on sidebar items ────────── */
     .item-dismiss {
-      background: none;
-      border: none;
-      color: #555;
+      background: #2a0a0a;
+      border: 1px solid #6b1a1a;
+      color: #e03030;
       cursor: pointer;
-      font-size: 1rem;
+      font-size: 0.85rem;
+      font-weight: 700;
       line-height: 1;
-      padding: 2px 4px;
+      padding: 4px 6px;
       flex-shrink: 0;
       border-radius: 3px;
     }
-    .item-dismiss:hover { color: #ff4136; background: rgba(255,65,54,0.1); }
+    .item-dismiss:hover { background: #e03030; border-color: #e03030; color: #fff; }
 
     /* ── Token gate ───────────────────────────────────── */
     #token-gate {
