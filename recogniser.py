@@ -28,7 +28,7 @@ ORB_NAM_PATH = os.path.join(DATA_DIR, "orb_card_names.json")
 ORB_FEATURES     = 500
 RATIO_THRESH     = 0.75
 MIN_GOOD_MATCHES = 8
-CNN_THRESHOLD    = 0.62  # cosine similarity threshold for embedding matches
+CNN_THRESHOLD    = 0.65  # cosine similarity threshold for embedding matches
 
 # ---------------------------------------------------------------------------
 # Shared state
