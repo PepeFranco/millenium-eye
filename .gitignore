@@ -25,6 +25,10 @@ data/phash_card_names.json
 # Live database (not for version control)
 data/wishlist.db
 
+# Reference data (re-downloadable)
+data/edison_cards.json
+data/sets.json
+
 # Logs
 data/failed_downloads.txt
 
