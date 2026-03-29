@@ -168,7 +168,6 @@ def _safe_path(rel):
 
 @app.route("/training-images")
 def training_images_page():
-    check_token()
     return render_template("training_images.html")
 
 
@@ -216,8 +215,7 @@ def training_samples_delete_all():
 
 @app.route("/training-samples/<path:filename>")
 def training_sample_image(filename):
-    check_token()
-    _safe_path(filename)  # security check
+    _safe_path(filename)  # security check — keeps path inside TRAINING_DIR
     return send_from_directory(TRAINING_DIR, filename)
 
 

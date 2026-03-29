@@ -224,7 +224,7 @@
     .detected-item {
       display: flex;
       align-items: center;
-      padding: 6px 12px;
+      padding: 10px 12px;
       border-bottom: 1px solid #191919;
       gap: 8px;
       animation: fadeIn 0.2s ease;
@@ -232,8 +232,8 @@
 
     .detected-item .di-name {
       flex: 1;
-      font-size: 0.82rem;
-      color: #777;
+      font-size: 0.92rem;
+      color: #aaa;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -249,8 +249,33 @@
     .detected-item .di-fill {
       height: 100%;
       border-radius: 2px;
-      background: #444;
+      background: #555;
       transition: width 0.3s;
+    }
+
+    /* Most recent detected item */
+    #detected-list .detected-item:first-child {
+      background: #c9a84c;
+      padding: 14px 14px;
+      border-bottom-color: #b08840;
+    }
+    #detected-list .detected-item:first-child .di-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #0d0d0d;
+    }
+    #detected-list .detected-item:first-child .di-bar {
+      background: rgba(0,0,0,0.2);
+    }
+    #detected-list .detected-item:first-child .di-fill {
+      background: rgba(0,0,0,0.5);
+    }
+    #detected-list .detected-item:first-child .item-dismiss {
+      color: rgba(0,0,0,0.35);
+    }
+    #detected-list .detected-item:first-child .item-dismiss:hover {
+      color: #0d0d0d;
+      background: rgba(0,0,0,0.15);
     }
 
     #no-matches {
@@ -418,7 +443,7 @@
   <div id="consent-banner" class="hidden">
     <div id="consent-box">
       <h2>Help Improve Recognition</h2>
-      <p>When you mark a scan as incorrect, the image may be sent to our server to help train a better model. No personal data is collected. You can opt out and nothing will be sent.</p>
+      <p>To improve card recognition, all images captured during scanning will be stored on our server for model training. No personal data is collected. You can opt out and nothing will be sent.</p>
       <div id="consent-buttons">
         <button id="consent-allow">Allow</button>
         <button id="consent-deny">Opt Out</button>
@@ -475,31 +500,8 @@
     const ctx            = overlay.getContext('2d');
     const capCtx         = captureCanvas.getContext('2d');
 
-    // ── Consent & audio ──────────────────────────────────────────────────────
+    // ── Consent ───────────────────────────────────────────────────────────────
     let sessionConsent = null;   // null = not decided, true = allowed, false = denied
-
-    let _audioCtx = null;
-    function getAudioCtx() {
-      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      return _audioCtx;
-    }
-
-    function playDing() {
-      try {
-        const ac   = getAudioCtx();
-        const osc  = ac.createOscillator();
-        const gain = ac.createGain();
-        osc.connect(gain);
-        gain.connect(ac.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1047, ac.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(660, ac.currentTime + 0.25);
-        gain.gain.setValueAtTime(0.25, ac.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.6);
-        osc.start(ac.currentTime);
-        osc.stop(ac.currentTime + 0.6);
-      } catch (_) {}
-    }
 
     const consentBanner = document.getElementById('consent-banner');
     const consentAllow  = document.getElementById('consent-allow');
@@ -512,7 +514,6 @@
     consentAllow.addEventListener('click', () => {
       sessionConsent = true;
       consentBanner.classList.add('hidden');
-      try { getAudioCtx(); } catch (_) {} // warm up AudioContext on user gesture
     });
 
     consentDeny.addEventListener('click', () => {
@@ -608,6 +609,11 @@
     const recentSeen  = new Map(); // card_id → timestamp
     const pendingHits = new Map(); // card_id → consecutive hit count
 
+    // Unrecognized (detected but no match) capture
+    let unrecognizedHits  = 0;
+    let lastUnrecognizedAt = 0;
+    const UNRECOGNIZED_COOLDOWN = 8_000; // ms between unrecognized captures
+
     function isSeen(id) {
       const t = recentSeen.get(id);
       return t && (Date.now() - t < DEDUP_MS);
@@ -628,7 +634,6 @@
     // ── sidebar ──────────────────────────────────────────────────────────────
     function addMatchToSidebar(match, blob) {
       noMatches.style.display = 'none';
-      playDing();
 
       const nameLower   = match.card_name.toLowerCase();
       const wantedByAll = wishlist.filter(e => e.card_name.toLowerCase() === nameLower);
@@ -856,6 +861,19 @@
           // Reset pending count for any card not seen this frame.
           for (const id of pendingHits.keys()) {
             if (!seenThisFrame.has(id)) pendingHits.delete(id);
+          }
+
+          // Capture frames where a card is detected but not recognised.
+          const hasUnrecognized = data.detections.some(d => !d.match);
+          if (hasUnrecognized) {
+            unrecognizedHits++;
+            if (unrecognizedHits >= STABLE_HITS && Date.now() - lastUnrecognizedAt > UNRECOGNIZED_COOLDOWN) {
+              lastUnrecognizedAt = Date.now();
+              unrecognizedHits = 0;
+              sendTrainingSample('unrecognized', blob);
+            }
+          } else {
+            unrecognizedHits = 0;
           }
 
           // fps + detection count
