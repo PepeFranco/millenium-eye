@@ -18,6 +18,12 @@ data/orb_card_ids.npy
 # Old phash artefacts (replaced by ORB)
 data/hashes.db
 data/hash_index.pkl
+data/phash_hashes.npy
+data/phash_card_ids.npy
+data/phash_card_names.json
+
+# Live database (not for version control)
+data/wishlist.db
 
 # Logs
 data/failed_downloads.txt
