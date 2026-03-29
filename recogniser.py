@@ -109,9 +109,17 @@ def _load_orb():
 def get_valid_card_names() -> list:
     if _id_to_name is None:
         return []
-    if _mode == "cnn":
-        return sorted(set(_id_to_name.values()))
     return sorted(set(_id_to_name.values()))
+
+
+def get_name_to_id_map() -> dict:
+    """Returns {card_name: card_id} for all known cards."""
+    if _id_to_name is None:
+        return {}
+    result = {}
+    for k, v in _id_to_name.items():
+        result[v] = int(k) if isinstance(k, str) else k
+    return result
 
 
 # ---------------------------------------------------------------------------

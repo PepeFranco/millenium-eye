@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Review Images</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e8d5a3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 12px 24px;
+      background: #1a1207;
+      border-bottom: 1px solid #4a3510;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1rem; color: #c9a84c; letter-spacing: 0.05em; }
+    #progress  { font-size: 0.8rem; color: #666; margin-left: auto; }
+
+    /* ── Main layout ─────────────────────────────────── */
+    #app {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      gap: 0;
+    }
+
+    /* ── Image panel ─────────────────────────────────── */
+    #image-panel {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #card-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    #guessed-label {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      border: 1px solid #4a3510;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      color: #c9a84c;
+      white-space: nowrap;
+      display: none;
+    }
+
+    /* ── Controls panel ──────────────────────────────── */
+    #controls {
+      width: 320px;
+      flex-shrink: 0;
+      background: #111;
+      border-left: 1px solid #2a1e06;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 20px;
+      gap: 16px;
+    }
+
+    #controls label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+    }
+
+    /* ── Autocomplete ────────────────────────────────── */
+    #search-wrap {
+      position: relative;
+    }
+
+    #card-input {
+      width: 100%;
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e8d5a3;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      outline: none;
+    }
+    #card-input:focus { border-color: #c9a84c; }
+
+    #suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: #1a1207;
+      border: 1px solid #4a3510;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 20;
+      display: none;
+    }
+    #suggestions.open { display: block; }
+
+    .suggestion {
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      color: #ccc;
+      cursor: pointer;
+    }
+    .suggestion:hover, .suggestion.active { background: #2a1e06; color: #e8d5a3; }
+
+    /* ── Buttons ─────────────────────────────────────── */
+    #assign-btn {
+      background: #c9a84c;
+      border: none;
+      border-radius: 6px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 11px;
+      width: 100%;
+    }
+    #assign-btn:disabled { opacity: 0.4; cursor: default; }
+    #assign-btn:not(:disabled):hover { background: #e0bc5a; }
+
+    #delete-btn {
+      background: transparent;
+      border: 1px solid #6b1a1a;
+      border-radius: 6px;
+      color: #e03030;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 9px;
+      width: 100%;
+    }
+    #delete-btn:hover { background: #2a0a0a; }
+
+    #skip-btn {
+      background: transparent;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #666;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 9px;
+      width: 100%;
+    }
+    #skip-btn:hover { border-color: #666; color: #aaa; }
+
+    #hint {
+      font-size: 0.7rem;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    /* ── Empty / done states ─────────────────────────── */
+    #done-msg {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex: 1;
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    /* Token gate */
+    #token-gate {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    #token-gate.hidden { display: none; }
+    #token-box {
+      background: #1a1207; border: 1px solid #4a3510; border-radius: 10px;
+      padding: 32px 28px; width: 320px; display: flex; flex-direction: column; gap: 14px;
+    }
+    #token-box h2 { color: #c9a84c; font-size: 1rem; }
+    #token-box p  { font-size: 0.8rem; color: #888; line-height: 1.5; }
+    #token-input {
+      background: #0d0d0d; border: 1px solid #333; border-radius: 6px;
+      color: #e8d5a3; font-size: 0.95rem; padding: 10px 12px; width: 100%; outline: none;
+    }
+    #token-input:focus { border-color: #c9a84c; }
+    #token-submit {
+      background: #c9a84c; border: none; border-radius: 6px; color: #0d0d0d;
+      cursor: pointer; font-size: 0.9rem; font-weight: 700; padding: 10px; width: 100%;
+    }
+    #token-submit:hover { background: #e0bc5a; }
+    #token-error { color: #ff4136; font-size: 0.78rem; display: none; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+  <div id="token-gate">
+    <div id="token-box">
+      <h2>Millennium Eye</h2>
+      <p>Enter the access token to review training images.</p>
+      <input id="token-input" type="password" placeholder="Access token" autocomplete="off" />
+      <span id="token-error">Invalid token — try again.</span>
+      <button id="token-submit">Enter</button>
+    </div>
+  </div>
+
+  <header>
+    <h1>Review Images</h1>
+    <span id="progress"></span>
+  </header>
+
+  <div id="app">
+    <div id="image-panel">
+      <img id="card-img" src="" alt="" />
+      <div id="guessed-label"></div>
+    </div>
+
+    <div id="controls">
+      <label for="card-input">Card name</label>
+      <div id="search-wrap">
+        <input id="card-input" type="text" placeholder="Start typing…" autocomplete="off" />
+        <div id="suggestions"></div>
+      </div>
+
+      <button id="assign-btn" disabled>Assign (Enter)</button>
+      <button id="delete-btn">Delete image</button>
+      <button id="skip-btn">Skip →</button>
+
+      <p id="hint">
+        <strong>Enter</strong> — assign &nbsp;·&nbsp;
+        <strong>Del</strong> — delete &nbsp;·&nbsp;
+        <strong>→</strong> — skip
+      </p>
+
+      <div id="done-msg" style="display:none">
+        <span>All images reviewed ✓</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY   = 'me_access_token';
+    const tokenGate   = document.getElementById('token-gate');
+    const tokenInput  = document.getElementById('token-input');
+    const tokenSubmit = document.getElementById('token-submit');
+    const tokenError  = document.getElementById('token-error');
+
+    let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+
+    function authedFetch(url, opts = {}) {
+      return fetch(url, {
+        ...opts,
+        headers: { 'X-Access-Token': accessToken, ...(opts.headers || {}) },
+      });
+    }
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let queue       = [];   // [{path, guessed_name}]
+    let nameToId    = {};   // {card_name: card_id}
+    let allNames    = [];   // sorted card names
+    let current     = 0;    // index into queue
+    let activeIdx   = -1;   // highlighted suggestion
+
+    const cardImg      = document.getElementById('card-img');
+    const guessedLabel = document.getElementById('guessed-label');
+    const cardInput    = document.getElementById('card-input');
+    const suggestions  = document.getElementById('suggestions');
+    const assignBtn    = document.getElementById('assign-btn');
+    const deleteBtn    = document.getElementById('delete-btn');
+    const skipBtn      = document.getElementById('skip-btn');
+    const progressEl   = document.getElementById('progress');
+    const doneMsg      = document.getElementById('done-msg');
+    const controls     = document.getElementById('controls');
+
+    // ── Load ─────────────────────────────────────────────────────────────────
+    async function loadData() {
+      const [qRes, mapRes] = await Promise.all([
+        authedFetch('/api/review-queue'),
+        authedFetch('/api/cards/name-to-id'),
+      ]);
+      queue    = await qRes.json();
+      nameToId = await mapRes.json();
+      allNames = Object.keys(nameToId).sort();
+      showCurrent();
+    }
+
+    function showCurrent() {
+      if (current >= queue.length) {
+        cardImg.src = '';
+        guessedLabel.style.display = 'none';
+        controls.style.display     = 'none';
+        doneMsg.style.display      = 'flex';
+        progressEl.textContent     = 'Done';
+        return;
+      }
+      const item = queue[current];
+      cardImg.src = `/training-samples/${item.path.split('/').map(encodeURIComponent).join('/')}?token=${encodeURIComponent(accessToken)}`;
+      if (item.guessed_name) {
+        guessedLabel.textContent    = `Model guessed: ${item.guessed_name}`;
+        guessedLabel.style.display  = 'block';
+      } else {
+        guessedLabel.style.display  = 'none';
+      }
+      progressEl.textContent = `${current + 1} of ${queue.length}`;
+      cardInput.value = '';
+      assignBtn.disabled = true;
+      closeSuggestions();
+      cardInput.focus();
+    }
+
+    // ── Autocomplete ──────────────────────────────────────────────────────────
+    function openSuggestions(filtered) {
+      suggestions.innerHTML = '';
+      activeIdx = -1;
+      if (!filtered.length) { closeSuggestions(); return; }
+      filtered.slice(0, 50).forEach((name, i) => {
+        const d = document.createElement('div');
+        d.className   = 'suggestion';
+        d.textContent = name;
+        d.addEventListener('mousedown', e => { e.preventDefault(); selectName(name); });
+        suggestions.appendChild(d);
+      });
+      suggestions.classList.add('open');
+    }
+
+    function closeSuggestions() {
+      suggestions.classList.remove('open');
+      suggestions.innerHTML = '';
+      activeIdx = -1;
+    }
+
+    function selectName(name) {
+      cardInput.value    = name;
+      assignBtn.disabled = !nameToId[name];
+      closeSuggestions();
+    }
+
+    cardInput.addEventListener('input', () => {
+      const q = cardInput.value.trim().toLowerCase();
+      assignBtn.disabled = !nameToId[cardInput.value.trim()];
+      if (!q) { closeSuggestions(); return; }
+      const matches = allNames.filter(n => n.toLowerCase().includes(q));
+      openSuggestions(matches);
+    });
+
+    cardInput.addEventListener('keydown', e => {
+      const items = suggestions.querySelectorAll('.suggestion');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = Math.min(activeIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+        if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(activeIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+        if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        if (activeIdx >= 0 && items[activeIdx]) {
+          selectName(items[activeIdx].textContent);
+        } else {
+          doAssign();
+        }
+      } else if (e.key === 'Escape') {
+        closeSuggestions();
+      }
+    });
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+    async function doAssign() {
+      const name = cardInput.value.trim();
+      const cardId = nameToId[name];
+      if (!cardId || current >= queue.length) return;
+
+      assignBtn.disabled = true;
+      await authedFetch('/api/review-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: queue[current].path, card_id: cardId }),
+      });
+      current++;
+      showCurrent();
+    }
+
+    async function doDelete() {
+      if (current >= queue.length) return;
+      await authedFetch(
+        `/api/training-samples/${queue[current].path.split('/').map(encodeURIComponent).join('/')}`,
+        { method: 'DELETE' }
+      );
+      current++;
+      showCurrent();
+    }
+
+    assignBtn.addEventListener('click', doAssign);
+    deleteBtn.addEventListener('click', doDelete);
+    skipBtn.addEventListener('click',   () => { current++; showCurrent(); });
+
+    // Global keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.target === cardInput) return; // handled above
+      if (e.key === 'Delete' || e.key === 'Backspace') doDelete();
+      if (e.key === 'ArrowRight') { current++; showCurrent(); }
+    });
+
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    async function init() {
+      if (accessToken) {
+        const res = await authedFetch('/api/review-queue');
+        if (res.status !== 401) {
+          tokenGate.classList.add('hidden');
+          queue    = await res.json();
+          const mapRes = await authedFetch('/api/cards/name-to-id');
+          nameToId = await mapRes.json();
+          allNames = Object.keys(nameToId).sort();
+          showCurrent();
+          return;
+        }
+        localStorage.removeItem(TOKEN_KEY);
+        accessToken = '';
+      }
+      tokenGate.classList.remove('hidden');
+    }
+
+    tokenSubmit.addEventListener('click', async () => {
+      const t = tokenInput.value.trim();
+      if (!t) return;
+      tokenSubmit.disabled = true;
+      const res = await fetch('/api/review-queue', { headers: { 'X-Access-Token': t } });
+      tokenSubmit.disabled = false;
+      if (res.status !== 401) {
+        accessToken = t;
+        localStorage.setItem(TOKEN_KEY, t);
+        tokenError.style.display = 'none';
+        tokenGate.classList.add('hidden');
+        queue    = await res.json();
+        const mapRes = await authedFetch('/api/cards/name-to-id');
+        nameToId = await mapRes.json();
+        allNames = Object.keys(nameToId).sort();
+        showCurrent();
+      } else {
+        tokenError.style.display = 'block';
+        tokenInput.select();
+      }
+    });
+
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tokenSubmit.click(); });
+
+    init();
+  </script>
+</body>
+</html>

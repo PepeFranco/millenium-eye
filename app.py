@@ -21,7 +21,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from card_detector import detect_cards
-from recogniser import load_index, recognise_card, get_valid_card_names
+from recogniser import load_index, recognise_card, get_valid_card_names, get_name_to_id_map
 from wishlist import init_db, get_all as wl_get_all, add_entry as wl_add, remove_entry as wl_remove
 
 app = Flask(__name__)
@@ -116,6 +116,12 @@ def card_names():
     return jsonify(get_valid_card_names())
 
 
+@app.route("/api/cards/name-to-id")
+def card_name_to_id():
+    check_token()
+    return jsonify(get_name_to_id_map())
+
+
 @app.route("/api/wishlist", methods=["GET"])
 def wishlist_get():
     check_token()
@@ -171,6 +177,61 @@ def _safe_path(rel):
 @app.route("/training-images")
 def training_images_page():
     return render_template("training_images.html")
+
+
+@app.route("/review")
+def review_page():
+    return render_template("review.html")
+
+
+@app.route("/api/review-queue")
+def review_queue():
+    check_token()
+    name_to_id = get_name_to_id_map()
+    id_to_name = {str(v): k for k, v in name_to_id.items()}
+    items = []
+    for subdir in ("incorrect", "unrecognized"):
+        d = os.path.join(TRAINING_DIR, subdir)
+        if not os.path.isdir(d):
+            continue
+        for filename in sorted(os.listdir(d)):
+            if not filename.endswith(".jpg"):
+                continue
+            path = f"{subdir}/{filename}"
+            # For incorrect images the filename is {card_id}_{timestamp}.jpg
+            guessed_name = None
+            if subdir == "incorrect":
+                parts = filename.split("_", 1)
+                if parts[0].isdigit():
+                    guessed_name = id_to_name.get(parts[0])
+            items.append({"path": path, "guessed_name": guessed_name})
+    return jsonify(items)
+
+
+@app.route("/api/review-assign", methods=["POST"])
+def review_assign():
+    check_token()
+    body    = request.get_json(silent=True) or {}
+    path    = (body.get("path") or "").strip()
+    card_id = str(body.get("card_id") or "").strip()
+    if not path or not card_id:
+        return jsonify({"error": "path and card_id required"}), 400
+
+    src = _safe_path(path)
+    if not os.path.isfile(src):
+        abort(404)
+
+    out_dir = os.path.join(TRAINING_DIR, card_id)
+    os.makedirs(out_dir, exist_ok=True)
+    ts  = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    dst = os.path.join(out_dir, f"{ts}.jpg")
+    os.rename(src, dst)
+
+    parent = os.path.dirname(src)
+    if os.path.isdir(parent) and not os.listdir(parent):
+        os.rmdir(parent)
+
+    return "", 204
 
 
 @app.route("/api/training-samples")
