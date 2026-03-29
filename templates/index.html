@@ -635,16 +635,33 @@
       return count >= STABLE_HITS;
     }
 
+    // Crop a card region from captureCanvas using its corner coordinates.
+    // Returns a Promise<Blob|null>.
+    function cropCard(corners) {
+      const xs = corners.map(c => c[0]);
+      const ys = corners.map(c => c[1]);
+      const x  = Math.max(0, Math.floor(Math.min(...xs)));
+      const y  = Math.max(0, Math.floor(Math.min(...ys)));
+      const w  = Math.min(Math.ceil(Math.max(...xs)) - x, captureCanvas.width  - x);
+      const h  = Math.min(Math.ceil(Math.max(...ys)) - y, captureCanvas.height - y);
+      if (w <= 0 || h <= 0) return Promise.resolve(null);
+      const tmp = document.createElement('canvas');
+      tmp.width  = w;
+      tmp.height = h;
+      tmp.getContext('2d').drawImage(captureCanvas, x, y, w, h, 0, 0, w, h);
+      return new Promise(resolve => tmp.toBlob(resolve, 'image/jpeg', 0.92));
+    }
+
     // ── sidebar ──────────────────────────────────────────────────────────────
-    function addMatchToSidebar(match, blob) {
+    function addMatchToSidebar(match, blobPromise) {
       noMatches.style.display = 'none';
 
       const nameLower   = match.card_name.toLowerCase();
       const wantedByAll = wishlist.filter(e => e.card_name.toLowerCase() === nameLower);
       const pct         = (match.confidence * 100).toFixed(0);
 
-      // Send image immediately; keep the promise so X can mark it incorrect later.
-      const samplePromise = sendTrainingSample(match.card_id, blob);
+      // Send crop immediately; keep the promise so X can mark it incorrect later.
+      const samplePromise = blobPromise.then(blob => sendTrainingSample(match.card_id, blob));
 
       function attachDismiss(el) {
         const xBtn = el.querySelector('.item-dismiss');
@@ -859,7 +876,7 @@
             seenThisFrame.add(id);
             if (!isSeen(id) && isStable(id)) {
               markSeen(id);
-              addMatchToSidebar(det.match, blob);
+              addMatchToSidebar(det.match, cropCard(det.corners));
             }
           }
           // Reset pending count for any card not seen this frame.
