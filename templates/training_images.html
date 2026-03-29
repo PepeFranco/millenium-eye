@@ -40,6 +40,17 @@
     }
     #delete-all-btn:hover { background: #3a0a0a; border-color: #c0504d; }
 
+    #download-btn {
+      background: transparent;
+      border: 1px solid #2a4a2a;
+      border-radius: 6px;
+      color: #4caf50;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 6px 14px;
+    }
+    #download-btn:hover { background: #1a2e1a; border-color: #4caf50; }
+
     /* ── Sections ────────────────────────────────────── */
     .section-header {
       padding: 14px 20px 8px;
@@ -183,6 +194,7 @@
   <header>
     <h1>Training Images</h1>
     <span id="stats"></span>
+    <button id="download-btn">Download ZIP</button>
     <button id="delete-all-btn">Delete All</button>
   </header>
 
@@ -278,6 +290,10 @@
 
     lightbox.addEventListener('click', () => lightbox.classList.add('hidden'));
     document.addEventListener('keydown', e => { if (e.key === 'Escape') lightbox.classList.add('hidden'); });
+
+    document.getElementById('download-btn').addEventListener('click', () => {
+      window.location.href = `/api/training-samples/download?token=${encodeURIComponent(accessToken)}`;
+    });
 
     document.getElementById('delete-all-btn').addEventListener('click', async () => {
       const total = grid.children.length + gridBad.children.length;

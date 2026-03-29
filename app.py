@@ -9,12 +9,14 @@ Production:
 """
 
 import datetime
+import io
 import os
 import shutil
 import time
+import zipfile
 import numpy as np
 import cv2
-from flask import Flask, render_template, request, jsonify, abort, send_from_directory
+from flask import Flask, render_template, request, jsonify, abort, send_from_directory, send_file
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -48,7 +50,7 @@ ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "")
 def check_token():
     if not ACCESS_TOKEN:
         return  # token not configured — skip auth (dev mode)
-    token = request.headers.get("X-Access-Token", "")
+    token = request.headers.get("X-Access-Token", "") or request.args.get("token", "")
     if token != ACCESS_TOKEN:
         abort(401)
 
@@ -187,6 +189,32 @@ def training_samples_list():
             results.append({"path": rel, "card_id": card_id, "incorrect": incorrect})
     results.sort(key=lambda x: x["path"])
     return jsonify(results)
+
+
+@app.route("/api/training-samples/download")
+def training_samples_download():
+    check_token()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        if os.path.isdir(TRAINING_DIR):
+            for dirpath, _, filenames in os.walk(TRAINING_DIR):
+                for filename in sorted(filenames):
+                    if not filename.endswith(".jpg"):
+                        continue
+                    filepath = os.path.join(dirpath, filename)
+                    rel = os.path.relpath(filepath, TRAINING_DIR).replace("\\", "/")
+                    parts = rel.split("/")
+                    # Correctly identified: {card_id}/{filename} where card_id is numeric
+                    if len(parts) == 2 and parts[0].isdigit():
+                        arcname = rel
+                    else:
+                        # Everything else (incorrect/, unrecognized/, etc.) → _review/
+                        arcname = f"_review/{parts[-1]}"
+                    zf.write(filepath, arcname)
+    buf.seek(0)
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name=f"training_samples_{ts}.zip")
 
 
 @app.route("/api/training-samples/<path:filename>", methods=["DELETE"])
