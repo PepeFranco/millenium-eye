@@ -277,6 +277,69 @@
     ::-webkit-scrollbar-track { background: #111; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
+    /* ── Consent banner ──────────────────────────────── */
+    #consent-banner {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 90;
+    }
+    #consent-banner.hidden { display: none; }
+
+    #consent-box {
+      background: #1a1207;
+      border: 1px solid #4a3510;
+      border-radius: 10px;
+      padding: 28px 24px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #consent-box h2 { color: #c9a84c; font-size: 0.95rem; letter-spacing: 0.04em; }
+    #consent-box p  { font-size: 0.78rem; color: #999; line-height: 1.6; }
+    #consent-buttons { display: flex; gap: 10px; }
+    #consent-allow {
+      flex: 1;
+      background: #c9a84c;
+      border: none;
+      border-radius: 6px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 9px;
+    }
+    #consent-allow:hover { background: #e0bc5a; }
+    #consent-deny {
+      flex: 1;
+      background: transparent;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #888;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 9px;
+    }
+    #consent-deny:hover { border-color: #888; color: #aaa; }
+
+    /* ── Dismiss (×) button on sidebar items ────────── */
+    .item-dismiss {
+      background: none;
+      border: none;
+      color: #555;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 2px 4px;
+      flex-shrink: 0;
+      border-radius: 3px;
+    }
+    .item-dismiss:hover { color: #ff4136; background: rgba(255,65,54,0.1); }
+
     /* ── Token gate ───────────────────────────────────── */
     #token-gate {
       position: fixed;
@@ -351,6 +414,18 @@
     </div>
   </div>
 
+  <!-- Consent banner — shown after auth, resets every session -->
+  <div id="consent-banner" class="hidden">
+    <div id="consent-box">
+      <h2>Help Improve Recognition</h2>
+      <p>When you mark a scan as incorrect, the image may be sent to our server to help train a better model. No personal data is collected. You can opt out and nothing will be sent.</p>
+      <div id="consent-buttons">
+        <button id="consent-allow">Allow</button>
+        <button id="consent-deny">Opt Out</button>
+      </div>
+    </div>
+  </div>
+
   <header>
     <div id="status-dot"></div>
     <h1>Millennium Eye</h1>
@@ -400,6 +475,75 @@
     const ctx            = overlay.getContext('2d');
     const capCtx         = captureCanvas.getContext('2d');
 
+    // ── Consent & audio ──────────────────────────────────────────────────────
+    let sessionConsent = null;   // null = not decided, true = allowed, false = denied
+
+    let _audioCtx = null;
+    function getAudioCtx() {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return _audioCtx;
+    }
+
+    function playDing() {
+      try {
+        const ac   = getAudioCtx();
+        const osc  = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1047, ac.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(660, ac.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.25, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.6);
+        osc.start(ac.currentTime);
+        osc.stop(ac.currentTime + 0.6);
+      } catch (_) {}
+    }
+
+    const consentBanner = document.getElementById('consent-banner');
+    const consentAllow  = document.getElementById('consent-allow');
+    const consentDeny   = document.getElementById('consent-deny');
+
+    function showConsentBanner() {
+      consentBanner.classList.remove('hidden');
+    }
+
+    consentAllow.addEventListener('click', () => {
+      sessionConsent = true;
+      consentBanner.classList.add('hidden');
+      try { getAudioCtx(); } catch (_) {} // warm up AudioContext on user gesture
+    });
+
+    consentDeny.addEventListener('click', () => {
+      sessionConsent = false;
+      consentBanner.classList.add('hidden');
+    });
+
+    // Returns the saved path from the server, or null if not consented / failed.
+    async function sendTrainingSample(cardId, blob) {
+      if (!sessionConsent || !blob) return null;
+      try {
+        const res = await fetch(`/api/training-sample?card_id=${encodeURIComponent(cardId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/jpeg', 'X-Access-Token': accessToken },
+          body: blob,
+        });
+        if (!res.ok) return null;
+        return (await res.json()).path || null;
+      } catch (_) { return null; }
+    }
+
+    async function markIncorrect(path) {
+      try {
+        await fetch('/api/training-sample/mark-incorrect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+          body: JSON.stringify({ path }),
+        });
+      } catch (_) {}
+    }
+
     // ── Token auth ───────────────────────────────────────────────────────────
     const TOKEN_KEY   = 'me_access_token';
     const tokenGate   = document.getElementById('token-gate');
@@ -426,6 +570,7 @@
           tokenGate.classList.add('hidden');
           startCamera();
           loadWishlist();
+          showConsentBanner();
           return;
         }
         // stored token is no longer valid
@@ -448,6 +593,7 @@
         tokenGate.classList.add('hidden');
         startCamera();
         loadWishlist();
+        showConsentBanner();
       } else {
         tokenError.style.display = 'block';
         tokenInput.select();
@@ -480,12 +626,27 @@
     }
 
     // ── sidebar ──────────────────────────────────────────────────────────────
-    function addMatchToSidebar(match) {
+    function addMatchToSidebar(match, blob) {
       noMatches.style.display = 'none';
+      playDing();
 
       const nameLower   = match.card_name.toLowerCase();
       const wantedByAll = wishlist.filter(e => e.card_name.toLowerCase() === nameLower);
       const pct         = (match.confidence * 100).toFixed(0);
+
+      // Send image immediately; keep the promise so X can mark it incorrect later.
+      const samplePromise = sendTrainingSample(match.card_id, blob);
+
+      function attachDismiss(el) {
+        const xBtn = el.querySelector('.item-dismiss');
+        if (!xBtn) return;
+        xBtn.addEventListener('click', async () => {
+          const savedPath = await samplePromise;
+          if (savedPath) markIncorrect(savedPath);
+          el.remove();
+          if (!wantedList.children.length) wantedSection.classList.remove('has-items');
+        });
+      }
 
       if (wantedByAll.length > 0) {
         // ── Wanted card (prominent) ──
@@ -504,12 +665,16 @@
         wEl.className = 'wanted-card';
         wEl.id = `wanted-${match.card_id}`;
         wEl.innerHTML = `
-          <div class="wc-name" title="${escapeHtml(match.card_name)}">${escapeHtml(match.card_name)}</div>
+          <div style="display:flex;align-items:flex-start;gap:4px">
+            <div class="wc-name" title="${escapeHtml(match.card_name)}" style="flex:1">${escapeHtml(match.card_name)}</div>
+            <button class="item-dismiss" title="Mark as incorrect scan">×</button>
+          </div>
           <div class="wc-by"><span class="wc-by-label">Wanted by: </span>${byLines}</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${pct}%"></div></div>`;
         wantedList.prepend(wEl);
         wantedSection.classList.add('has-items');
         while (wantedList.children.length > 10) wantedList.lastChild.remove();
+        attachDismiss(wEl);
 
       } else {
         // ── Regular detected card (compact) ──
@@ -524,9 +689,11 @@
         dEl.id = `det-${match.card_id}`;
         dEl.innerHTML = `
           <span class="di-name" title="${escapeHtml(match.card_name)}">${escapeHtml(match.card_name)}</span>
-          <div class="di-bar"><div class="di-fill" style="width:${pct}%"></div></div>`;
+          <div class="di-bar"><div class="di-fill" style="width:${pct}%"></div></div>
+          <button class="item-dismiss" title="Mark as incorrect scan">×</button>`;
         detectedList.insertBefore(dEl, detectedList.firstElementChild);
         while (detectedList.children.length > 30) detectedList.lastChild.remove();
+        attachDismiss(dEl);
       }
     }
 
@@ -683,7 +850,7 @@
             seenThisFrame.add(id);
             if (!isSeen(id) && isStable(id)) {
               markSeen(id);
-              addMatchToSidebar(det.match);
+              addMatchToSidebar(det.match, blob);
             }
           }
           // Reset pending count for any card not seen this frame.

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Training Images</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e8d5a3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 14px 24px;
+      background: #1a1207;
+      border-bottom: 1px solid #4a3510;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1rem; color: #c9a84c; letter-spacing: 0.05em; }
+    #stats { font-size: 0.8rem; color: #666; }
+
+    #delete-all-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid #5a1a1a;
+      border-radius: 6px;
+      color: #c0504d;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 6px 14px;
+    }
+    #delete-all-btn:hover { background: #3a0a0a; border-color: #c0504d; }
+
+    /* ── Sections ────────────────────────────────────── */
+    .section-header {
+      padding: 14px 20px 8px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #c9a84c;
+      border-bottom: 1px solid #1e1a10;
+    }
+    .section-header.incorrect { color: #c0504d; }
+
+    #grid, #grid-incorrect {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      padding: 14px 20px;
+    }
+
+    .img-card {
+      position: relative;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .img-card.incorrect { border-color: #3a1414; }
+
+    .img-card img {
+      width: 100%;
+      display: block;
+      aspect-ratio: 3/4;
+      object-fit: cover;
+      cursor: pointer;
+    }
+
+    .img-card .label {
+      padding: 5px 8px;
+      font-size: 0.65rem;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .img-card .del-btn {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 0.85rem;
+      line-height: 1;
+      padding: 3px 6px;
+    }
+    .img-card .del-btn:hover { background: rgba(180,0,0,0.85); border-color: #f44; color: #fff; }
+
+    #empty { color: #444; font-size: 0.9rem; text-align: center; padding: 80px 20px; }
+
+    /* ── Lightbox ────────────────────────────────────── */
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      cursor: zoom-out;
+    }
+    #lightbox.hidden { display: none; }
+    #lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 4px; }
+
+    /* ── Token gate ───────────────────────────────────── */
+    #token-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #token-gate.hidden { display: none; }
+    #token-box {
+      background: #1a1207;
+      border: 1px solid #4a3510;
+      border-radius: 10px;
+      padding: 32px 28px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    #token-box h2 { color: #c9a84c; font-size: 1rem; }
+    #token-box p  { font-size: 0.8rem; color: #888; line-height: 1.5; }
+    #token-input {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e8d5a3;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      width: 100%;
+      outline: none;
+    }
+    #token-input:focus { border-color: #c9a84c; }
+    #token-submit {
+      background: #c9a84c;
+      border: none;
+      border-radius: 6px;
+      color: #0d0d0d;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 10px;
+      width: 100%;
+    }
+    #token-submit:hover { background: #e0bc5a; }
+    #token-error { color: #ff4136; font-size: 0.78rem; display: none; }
+  </style>
+</head>
+<body>
+
+  <div id="token-gate">
+    <div id="token-box">
+      <h2>Millennium Eye</h2>
+      <p>Enter the access token to view training images.</p>
+      <input id="token-input" type="password" placeholder="Access token" autocomplete="off" />
+      <span id="token-error">Invalid token — try again.</span>
+      <button id="token-submit">Enter</button>
+    </div>
+  </div>
+
+  <div id="lightbox" class="hidden">
+    <img id="lightbox-img" src="" alt="" />
+  </div>
+
+  <header>
+    <h1>Training Images</h1>
+    <span id="stats"></span>
+    <button id="delete-all-btn">Delete All</button>
+  </header>
+
+  <div id="content">
+    <p id="empty" style="display:none">No training images yet.</p>
+
+    <div id="good-section" style="display:none">
+      <div class="section-header">Good scans</div>
+      <div id="grid"></div>
+    </div>
+
+    <div id="incorrect-section" style="display:none">
+      <div class="section-header incorrect">Incorrect scans</div>
+      <div id="grid-incorrect"></div>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY    = 'me_access_token';
+    const tokenGate    = document.getElementById('token-gate');
+    const tokenInput   = document.getElementById('token-input');
+    const tokenSubmit  = document.getElementById('token-submit');
+    const tokenError   = document.getElementById('token-error');
+    const statsEl      = document.getElementById('stats');
+    const emptyEl      = document.getElementById('empty');
+    const goodSection  = document.getElementById('good-section');
+    const badSection   = document.getElementById('incorrect-section');
+    const grid         = document.getElementById('grid');
+    const gridBad      = document.getElementById('grid-incorrect');
+    const lightbox     = document.getElementById('lightbox');
+    const lightboxImg  = document.getElementById('lightbox-img');
+
+    let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+
+    function authedFetch(url, opts = {}) {
+      return fetch(url, {
+        ...opts,
+        headers: { 'X-Access-Token': accessToken, ...(opts.headers || {}) },
+      });
+    }
+
+    function updateStats() {
+      const good = grid.children.length;
+      const bad  = gridBad.children.length;
+      const total = good + bad;
+      statsEl.textContent = `${total} image${total !== 1 ? 's' : ''} (${good} good · ${bad} incorrect)`;
+      emptyEl.style.display    = total === 0 ? 'block' : 'none';
+      goodSection.style.display = good  > 0  ? 'block' : 'none';
+      badSection.style.display  = bad   > 0  ? 'block' : 'none';
+    }
+
+    function addCard(item) {
+      const { path, card_id, incorrect } = item;
+      const target = incorrect ? gridBad : grid;
+
+      const card = document.createElement('div');
+      card.className = 'img-card' + (incorrect ? ' incorrect' : '');
+
+      const imgUrl = `/training-samples/${path.split('/').map(encodeURIComponent).join('/')}`;
+      card.innerHTML = `
+        <img src="${imgUrl}" loading="lazy" alt="${card_id}" />
+        <div class="label">ID: ${card_id}</div>
+        <button class="del-btn" title="Delete">×</button>`;
+
+      card.querySelector('img').addEventListener('click', () => {
+        lightboxImg.src = imgUrl;
+        lightbox.classList.remove('hidden');
+      });
+
+      card.querySelector('.del-btn').addEventListener('click', async () => {
+        const res = await authedFetch(
+          `/api/training-samples/${path.split('/').map(encodeURIComponent).join('/')}`,
+          { method: 'DELETE' }
+        );
+        if (res.ok || res.status === 404) {
+          card.remove();
+          updateStats();
+        }
+      });
+
+      target.appendChild(card);
+    }
+
+    async function loadImages() {
+      const res = await authedFetch('/api/training-samples');
+      if (res.status === 401) { showGate(); return; }
+      const files = await res.json();
+      grid.innerHTML    = '';
+      gridBad.innerHTML = '';
+      files.forEach(addCard);
+      updateStats();
+    }
+
+    lightbox.addEventListener('click', () => lightbox.classList.add('hidden'));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') lightbox.classList.add('hidden'); });
+
+    document.getElementById('delete-all-btn').addEventListener('click', async () => {
+      const total = grid.children.length + gridBad.children.length;
+      if (total === 0) return;
+      if (!confirm(`Delete all ${total} training images? This cannot be undone.`)) return;
+      const res = await authedFetch('/api/training-samples', { method: 'DELETE' });
+      if (res.ok) {
+        grid.innerHTML    = '';
+        gridBad.innerHTML = '';
+        updateStats();
+      }
+    });
+
+    function showGate() { tokenGate.classList.remove('hidden'); }
+
+    async function init() {
+      if (accessToken) {
+        const res = await authedFetch('/api/training-samples');
+        if (res.status !== 401) {
+          tokenGate.classList.add('hidden');
+          const files = await res.json();
+          files.forEach(addCard);
+          updateStats();
+          return;
+        }
+        localStorage.removeItem(TOKEN_KEY);
+        accessToken = '';
+      }
+      showGate();
+    }
+
+    tokenSubmit.addEventListener('click', async () => {
+      const t = tokenInput.value.trim();
+      if (!t) return;
+      tokenSubmit.disabled = true;
+      const res = await fetch('/api/training-samples', { headers: { 'X-Access-Token': t } });
+      tokenSubmit.disabled = false;
+      if (res.status !== 401) {
+        accessToken = t;
+        localStorage.setItem(TOKEN_KEY, t);
+        tokenError.style.display = 'none';
+        tokenGate.classList.add('hidden');
+        const files = await res.json();
+        files.forEach(addCard);
+        updateStats();
+      } else {
+        tokenError.style.display = 'block';
+        tokenInput.select();
+      }
+    });
+
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tokenSubmit.click(); });
+
+    init();
+  </script>
+</body>
+</html>

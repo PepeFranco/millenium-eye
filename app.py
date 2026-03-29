@@ -8,11 +8,13 @@ Production:
     gunicorn -c gunicorn.conf.py app:app
 """
 
+import datetime
 import os
+import shutil
 import time
 import numpy as np
 import cv2
-from flask import Flask, render_template, request, jsonify, abort
+from flask import Flask, render_template, request, jsonify, abort, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -141,6 +143,135 @@ def wishlist_post():
 def wishlist_delete(entry_id):
     check_token()
     wl_remove(entry_id)
+    return "", 204
+
+
+TRAINING_DIR = os.path.join(os.path.dirname(__file__), "data", "training_samples")
+_TRAINING_REAL = None  # resolved lazily after first mkdir
+
+
+def _training_real():
+    global _TRAINING_REAL
+    if _TRAINING_REAL is None:
+        os.makedirs(TRAINING_DIR, exist_ok=True)
+        _TRAINING_REAL = os.path.realpath(TRAINING_DIR)
+    return _TRAINING_REAL
+
+
+def _safe_path(rel):
+    """Return absolute path only if it stays inside TRAINING_DIR."""
+    full = os.path.realpath(os.path.join(TRAINING_DIR, rel))
+    if not full.startswith(_training_real() + os.sep):
+        abort(400)
+    return full
+
+
+@app.route("/training-images")
+def training_images_page():
+    check_token()
+    return render_template("training_images.html")
+
+
+@app.route("/api/training-samples")
+def training_samples_list():
+    check_token()
+    if not os.path.isdir(TRAINING_DIR):
+        return jsonify([])
+    results = []
+    for dirpath, _, filenames in os.walk(TRAINING_DIR):
+        for filename in sorted(filenames):
+            if not filename.endswith(".jpg"):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, filename), TRAINING_DIR).replace("\\", "/")
+            incorrect = rel.startswith("incorrect/")
+            card_id   = rel.split("/")[0] if not incorrect else rel.split("/")[1].split("_", 1)[0]
+            results.append({"path": rel, "card_id": card_id, "incorrect": incorrect})
+    results.sort(key=lambda x: x["path"])
+    return jsonify(results)
+
+
+@app.route("/api/training-samples/<path:filename>", methods=["DELETE"])
+def training_sample_delete(filename):
+    check_token()
+    filepath = _safe_path(filename)
+    if not os.path.isfile(filepath):
+        abort(404)
+    os.remove(filepath)
+    # Clean up empty parent directory (but not TRAINING_DIR itself)
+    parent = os.path.dirname(filepath)
+    if parent != os.path.realpath(TRAINING_DIR) and os.path.isdir(parent) and not os.listdir(parent):
+        os.rmdir(parent)
+    return "", 204
+
+
+@app.route("/api/training-samples", methods=["DELETE"])
+def training_samples_delete_all():
+    check_token()
+    if os.path.isdir(TRAINING_DIR):
+        shutil.rmtree(TRAINING_DIR)
+    os.makedirs(TRAINING_DIR, exist_ok=True)
+    print("[training] deleted all training samples", flush=True)
+    return "", 204
+
+
+@app.route("/training-samples/<path:filename>")
+def training_sample_image(filename):
+    check_token()
+    _safe_path(filename)  # security check
+    return send_from_directory(TRAINING_DIR, filename)
+
+
+@app.route("/api/training-sample", methods=["POST"])
+def training_sample_save():
+    check_token()
+    card_id = (request.args.get("card_id") or "").strip()
+    if not card_id:
+        return jsonify({"error": "card_id required"}), 400
+
+    data = request.get_data()
+    if not data:
+        return jsonify({"error": "empty body"}), 400
+
+    out_dir = os.path.join(TRAINING_DIR, card_id)
+    os.makedirs(out_dir, exist_ok=True)
+
+    ts       = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"{ts}.jpg"
+    with open(os.path.join(out_dir, filename), "wb") as f:
+        f.write(data)
+
+    saved_path = f"{card_id}/{filename}"
+    print(f"[training] saved: {saved_path}", flush=True)
+    return jsonify({"path": saved_path}), 201
+
+
+@app.route("/api/training-sample/mark-incorrect", methods=["POST"])
+def training_sample_mark_incorrect():
+    check_token()
+    body = request.get_json(silent=True) or {}
+    path = (body.get("path") or "").strip()
+    if not path or path.startswith("incorrect/"):
+        return jsonify({"error": "invalid path"}), 400
+
+    src = _safe_path(path)
+    if not os.path.isfile(src):
+        abort(404)
+
+    # Move to incorrect/{card_id}_{original_filename}
+    parts    = path.split("/")
+    card_id  = parts[0]
+    basename = parts[-1]
+
+    incorrect_dir = os.path.join(TRAINING_DIR, "incorrect")
+    os.makedirs(incorrect_dir, exist_ok=True)
+    os.rename(src, os.path.join(incorrect_dir, f"{card_id}_{basename}"))
+
+    # Remove empty card directory
+    card_dir = os.path.join(TRAINING_DIR, card_id)
+    if os.path.isdir(card_dir) and not os.listdir(card_dir):
+        os.rmdir(card_dir)
+
+    print(f"[training] marked incorrect: {path}", flush=True)
     return "", 204
 
 
