@@ -5,6 +5,10 @@ Reads data/synthetic/{card_id}/{i}.jpg, trains a classifier with one
 class per card, saves the weights to data/finetuned_mobilenet.pth and
 the class→card_id mapping to data/class_to_card_id.json.
 
+Also merges any real images from data/training_samples/{card_id}/ —
+only numeric subdirectories are used (incorrect/ and unrecognized/ are
+skipped).
+
 Run on M1 Mac (uses MPS GPU). Do NOT run on the server.
 
 Usage:
@@ -16,14 +20,25 @@ import os
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 from torchvision import datasets, transforms
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 from tqdm import tqdm
 
 SYNTHETIC_DIR  = os.path.join("data", "synthetic")
+REAL_DIR       = os.path.join("data", "training_samples")
 WEIGHTS_PATH   = os.path.join("data", "finetuned_mobilenet.pth")
 CLASS_MAP_PATH = os.path.join("data", "class_to_card_id.json")
+
+
+class _NumericImageFolder(datasets.ImageFolder):
+    """ImageFolder that only loads from numeric (card_id) subdirectories."""
+    def find_classes(self, directory):
+        classes = sorted(
+            d for d in os.listdir(directory)
+            if os.path.isdir(os.path.join(directory, d)) and d.isdigit()
+        )
+        return classes, {cls: i for i, cls in enumerate(classes)}
 
 EPOCHS      = 8
 BATCH_SIZE  = 64
@@ -57,20 +72,39 @@ train_transform = transforms.Compose([
 ])
 
 if __name__ == "__main__":
-    dataset    = datasets.ImageFolder(SYNTHETIC_DIR, transform=train_transform)
+    synthetic = datasets.ImageFolder(SYNTHETIC_DIR, transform=train_transform)
+
+    # Merge real samples if the folder exists and has any numeric card dirs
+    real_count = 0
+    combined   = synthetic
+    if os.path.isdir(REAL_DIR):
+        real = _NumericImageFolder(REAL_DIR, transform=train_transform)
+        if real.samples:
+            # Remap real dataset's local class indices → synthetic class indices.
+            # Classes not present in synthetic are silently dropped.
+            remap = {
+                local_idx: synthetic.class_to_idx[cls]
+                for cls, local_idx in real.class_to_idx.items()
+                if cls in synthetic.class_to_idx
+            }
+            real.samples = [(p, remap[t]) for p, t in real.samples if t in remap]
+            real.targets  = [remap[t] for t in real.targets  if t in remap]
+            real_count    = len(real.samples)
+            combined      = ConcatDataset([synthetic, real])
+
+    n_classes = len(synthetic.classes)
+    print(f"Classes (cards): {n_classes:,}  |  Synthetic: {len(synthetic):,}  |  Real: {real_count:,}  |  Total: {len(combined):,}")
+
     dataloader = DataLoader(
-        dataset,
+        combined,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=NUM_WORKERS,
         pin_memory=False,
     )
 
-    n_classes = len(dataset.classes)
-    print(f"Classes (cards): {n_classes:,}  |  Training images: {len(dataset):,}")
-
     # Save class→card_id mapping (ImageFolder sorts dirs alphabetically)
-    class_to_card_id = {i: int(cls) for i, cls in enumerate(dataset.classes)}
+    class_to_card_id = {i: int(cls) for i, cls in enumerate(synthetic.classes)}
     with open(CLASS_MAP_PATH, "w") as f:
         json.dump(class_to_card_id, f)
     print(f"Class map saved → {CLASS_MAP_PATH}")

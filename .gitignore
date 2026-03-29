@@ -25,6 +25,9 @@ data/phash_card_names.json
 # Live database (not for version control)
 data/wishlist.db
 
+# Collected real training images (large, managed separately)
+data/training_samples/
+
 # Reference data (re-downloadable)
 data/edison_cards.json
 data/sets.json
